@@ -189,6 +189,7 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
 	common.OptionMap["AutomaticRetryStatusCodes"] = operation_setting.AutomaticRetryStatusCodesToString()
 	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
+	common.OptionMap[operation_setting.ModelReplacementSettingOptionKey] = operation_setting.ModelReplacementSettingJSON()
 
 	// 自动添加所有注册的模型配置
 	modelConfigs := config.GlobalConfig.ExportAllConfigs()
@@ -264,6 +265,10 @@ func validateOptionValue(key string, value string) error {
 	}
 	if key == operation_setting.ChannelTestConcurrencyOptionKey {
 		return operation_setting.ValidateChannelTestConcurrency(value)
+	}
+	if key == operation_setting.ModelReplacementSettingOptionKey {
+		_, err := operation_setting.ParseModelReplacementSetting(value)
+		return err
 	}
 	if key == operation_setting.LogMaxRangeDaysOptionKey {
 		return operation_setting.ValidateLogMaxRangeDays(value)
@@ -715,6 +720,10 @@ func updateOptionMap(key string, value string) (err error) {
 func handleConfigUpdate(key, value string) bool {
 	if key == operation_setting.ToolPriceOptionKey {
 		operation_setting.LoadToolPricesFromJSONString(value)
+		return true
+	}
+	if key == operation_setting.ModelReplacementSettingOptionKey {
+		operation_setting.LoadModelReplacementSetting(value)
 		return true
 	}
 

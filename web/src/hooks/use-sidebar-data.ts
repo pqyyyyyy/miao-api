@@ -29,6 +29,7 @@ import {
   MessageSquare,
   PlugZap,
   Radio,
+  ScanSearch,
   ServerCog,
   Settings,
   ShieldCheck,
@@ -156,6 +157,12 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
             title: t('Subscriptions'),
             url: '/subscriptions',
             icon: CreditCard,
+          },
+          {
+            title: t('Model replacement detection'),
+            url: '/model-replacement',
+            icon: ScanSearch,
+            requiredRole: ROLE.SUPER_ADMIN,
           },
           {
             title: t('System Info'),

@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { ModelReplacementSettingsSection } from '@/features/model-replacement/components/settings/model-replacement-settings-section'
+
 import { createSectionRegistry } from '../utils/section-registry'
 import { ChannelHealthSection } from './channel-health-section'
 import type { RequestPolicySettings } from './defaults'
@@ -47,6 +49,11 @@ const POLICY_SECTIONS = [
     build: (settings: RequestPolicySettings) => (
       <ChannelHealthSection defaultValues={settings} />
     ),
+  },
+  {
+    id: 'model-replacement',
+    titleKey: 'Model replacement detection',
+    build: () => <ModelReplacementSettingsSection />,
   },
 ] as const
 

@@ -340,6 +340,18 @@ func SetApiRouter(router *gin.Engine) {
 			systemTaskRoute.GET("/current", controller.GetCurrentSystemTask)
 			systemTaskRoute.GET("/:task_id", controller.GetSystemTask)
 		}
+		modelReplacementRoute := apiRouter.Group("/model_replacement")
+		modelReplacementRoute.Use(middleware.RootAuth())
+		{
+			modelReplacementRoute.GET("/settings", controller.GetModelReplacementSettings)
+			modelReplacementRoute.PUT("/settings", controller.UpdateModelReplacementSettings)
+			modelReplacementRoute.GET("/candidates", controller.GetModelReplacementCandidates)
+			modelReplacementRoute.GET("/overview", controller.GetModelReplacementOverview)
+			modelReplacementRoute.POST("/run", controller.RunModelReplacementDetection)
+			modelReplacementRoute.GET("/channels", controller.GetModelReplacementChannels)
+			modelReplacementRoute.GET("/history", controller.GetModelReplacementHistory)
+			modelReplacementRoute.GET("/records/:id/attempts", controller.GetModelReplacementRecordAttempts)
+		}
 		systemInfoRoute := apiRouter.Group("/system-info")
 		systemInfoRoute.Use(middleware.RootAuth())
 		{

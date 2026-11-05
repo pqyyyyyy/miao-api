@@ -30,6 +30,7 @@ import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { ErrorState } from '@/components/error-state'
+import { RingProgress } from '@/components/ring-progress'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -143,57 +144,6 @@ function ringColorClass(percent: number | null) {
   return 'text-emerald-500'
 }
 
-type RingProgressProps = {
-  percent: number | null
-  size?: number
-}
-
-function RingProgress(props: RingProgressProps) {
-  const size = props.size ?? 22
-  const stroke = 2.5
-  const radius = (size - stroke) / 2
-  const circumference = 2 * Math.PI * radius
-  const offset =
-    props.percent === null
-      ? circumference
-      : circumference - (props.percent / 100) * circumference
-
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      className='shrink-0 -rotate-90'
-      aria-hidden='true'
-    >
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill='none'
-        strokeWidth={stroke}
-        stroke='currentColor'
-        className='text-muted'
-      />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill='none'
-        strokeWidth={stroke}
-        strokeLinecap='round'
-        stroke='currentColor'
-        strokeDasharray={circumference}
-        strokeDashoffset={offset}
-        className={cn(
-          'transition-[stroke-dashoffset] duration-500',
-          ringColorClass(props.percent)
-        )}
-      />
-    </svg>
-  )
-}
-
 type ResourceCellProps = {
   value?: number
   tooltip?: ReactNode
@@ -206,7 +156,7 @@ function ResourceCell(props: ResourceCellProps) {
       : null
   const content = (
     <div className='flex items-center gap-2'>
-      <RingProgress percent={percent} />
+      <RingProgress percent={percent} className={ringColorClass(percent)} />
       <span className='font-mono text-[11px] tabular-nums'>
         {formatPercent(props.value)}
       </span>
