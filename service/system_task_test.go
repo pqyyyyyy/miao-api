@@ -97,6 +97,47 @@ func TestSystemTaskSchedulerCreatesWhenDueAndDedups(t *testing.T) {
 	require.Equal(t, int64(2), countSystemTasks(t, handler.taskType))
 }
 
+type stubFinishTimeHandler struct {
+	stubScheduledHandler
+	intervalAfter func(finishedAt time.Time) time.Duration
+}
+
+func (h *stubFinishTimeHandler) IntervalAfter(finishedAt time.Time) time.Duration {
+	return h.intervalAfter(finishedAt)
+}
+
+func TestSystemTaskSchedulerUsesTheIntervalForThePreviousFinishTime(t *testing.T) {
+	truncate(t)
+
+	var seenFinish time.Time
+	wait := time.Hour
+	handler := &stubFinishTimeHandler{
+		stubScheduledHandler: stubScheduledHandler{taskType: "test_finish_time", enabled: true, interval: time.Minute},
+		intervalAfter: func(finishedAt time.Time) time.Duration {
+			seenFinish = finishedAt
+			return wait
+		},
+	}
+	withSystemTaskRegistry(t, handler)
+
+	task, err := model.CreateSystemTask(handler.taskType, nil, nil)
+	require.NoError(t, err)
+	_, claimed, err := model.ClaimSystemTask(task.ID, handler.taskType, "runner-a", common.GetTimestamp()+60)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.NoError(t, model.FinishSystemTask(task.TaskID, "runner-a", model.SystemTaskStatusSucceeded, nil, ""))
+	finishedAt := common.GetTimestamp() - 120
+	require.NoError(t, model.DB.Model(&model.SystemTask{}).Where("task_id = ?", task.TaskID).Update("updated_at", finishedAt).Error)
+
+	runSystemTaskScheduler()
+	assert.Equal(t, int64(1), countSystemTasks(t, handler.taskType), "the one-hour wait chosen for that finish time has not elapsed, although Interval() has")
+	assert.Equal(t, finishedAt, seenFinish.Unix())
+
+	wait = time.Minute
+	runSystemTaskScheduler()
+	assert.Equal(t, int64(2), countSystemTasks(t, handler.taskType))
+}
+
 func TestSystemTaskSchedulerSkipsDisabled(t *testing.T) {
 	truncate(t)
 

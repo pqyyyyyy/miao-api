@@ -56,7 +56,8 @@ type modelReplacementRunSummary struct {
 
 // modelReplacementHandler schedules detection runs. The scheduler measures
 // the interval from the previous run's last update, so the wait for the next
-// run starts after every round of the previous run has finished.
+// run starts after every round of the previous run has finished, and the
+// interval is the one configured for the time of day that run finished.
 type modelReplacementHandler struct{}
 
 func (modelReplacementHandler) Type() string { return model.SystemTaskTypeModelReplacementDetection }
@@ -67,6 +68,12 @@ func (modelReplacementHandler) Enabled() bool {
 
 func (modelReplacementHandler) Interval() time.Duration {
 	return time.Duration(operation_setting.GetModelReplacementSetting().IntervalMinutes) * time.Minute
+}
+
+// IntervalAfter picks the wait from the time window the previous run finished
+// in, so a run that ends at night waits for the night interval.
+func (modelReplacementHandler) IntervalAfter(finishedAt time.Time) time.Duration {
+	return operation_setting.GetModelReplacementSetting().IntervalAt(finishedAt)
 }
 
 func (modelReplacementHandler) NewPayload() any { return nil }

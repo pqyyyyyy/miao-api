@@ -41,8 +41,10 @@ export function ModelReplacementSettingsSection() {
   const settingsQuery = useQuery({
     queryKey: modelReplacementQueryKeys.settings(),
     queryFn: async () =>
-      requireServerSuccess(await getModelReplacementSettings()).data ??
-      DEFAULT_MODEL_REPLACEMENT_SETTINGS,
+      requireServerSuccess(await getModelReplacementSettings()).data ?? {
+        settings: DEFAULT_MODEL_REPLACEMENT_SETTINGS,
+        server_time_zone: '',
+      },
   })
   const candidatesQuery = useQuery({
     queryKey: modelReplacementQueryKeys.candidates(),
@@ -71,7 +73,8 @@ export function ModelReplacementSettingsSection() {
 
   return (
     <ModelReplacementSettingsForm
-      settings={settingsQuery.data}
+      settings={settingsQuery.data.settings}
+      serverTimeZone={settingsQuery.data.server_time_zone}
       candidates={candidatesQuery.data}
       groups={groupsQuery.data ?? []}
     />

@@ -183,7 +183,7 @@ export function OverviewCards(props: OverviewCardsProps) {
                         'seconds',
                         locale
                       ),
-                      minutes: props.overview.interval_minutes,
+                      minutes: props.overview.next_interval_minutes,
                     })
                   : t('Scheduled detection is not running.')}
               </p>

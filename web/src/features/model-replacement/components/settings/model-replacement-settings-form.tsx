@@ -61,6 +61,7 @@ import {
 import type { ModelCandidate, ModelReplacementSettings } from '../../types'
 import { ActionListField } from './action-list-field'
 import { DetectedModelCard } from './detected-model-card'
+import { IntervalWindowsField } from './interval-windows-field'
 
 type NumericSettingField = {
   name:
@@ -79,9 +80,9 @@ type NumericSettingField = {
 const NUMERIC_FIELDS: NumericSettingField[] = [
   {
     name: 'interval_minutes',
-    label: 'Detection interval (minutes)',
+    label: 'Default detection interval (minutes)',
     description:
-      'Waiting starts after every round of the previous run has finished.',
+      'Used when a run finishes outside every time window below. Waiting starts after every round of the previous run has finished.',
     min: 1,
     max: SETTING_LIMITS.intervalMinutesMax,
   },
@@ -121,6 +122,7 @@ const NUMERIC_FIELDS: NumericSettingField[] = [
 
 type ModelReplacementSettingsFormProps = {
   settings: ModelReplacementSettings
+  serverTimeZone: string
   candidates: ModelCandidate[]
   groups: string[]
 }
@@ -244,6 +246,11 @@ export function ModelReplacementSettingsForm(
                 )}
               />
             ))}
+            <IntervalWindowsField
+              control={form.control}
+              serverTimeZone={props.serverTimeZone}
+              defaultInterval={form.getValues('interval_minutes')}
+            />
           </SettingsFormGrid>
 
           <Separator />
