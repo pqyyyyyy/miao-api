@@ -41,6 +41,8 @@ import {
   modelReplacementQueryKeys,
 } from '../../api'
 import {
+  GRANULARITY_OPTIONS,
+  aggregateHealthPoints,
   buildHealthPoints,
   channelsForModel,
   healthSeriesDomain,
@@ -67,6 +69,7 @@ export function ChannelReportPanel(props: ChannelReportPanelProps) {
   const { t } = useTranslation()
   const [model, setModel] = useState<string | null>(null)
   const [range, setRange] = useState(() => todayRange())
+  const [granularity, setGranularity] = useState(0)
 
   const start = Math.floor(range.start.getTime() / 1000)
   const end = Math.floor(range.end.getTime() / 1000)
@@ -109,9 +112,18 @@ export function ChannelReportPanel(props: ChannelReportPanelProps) {
   )
   const records = useMemo(() => historyQuery.data ?? [], [historyQuery.data])
   const points = useMemo(
-    () => buildHealthPoints(records, model),
-    [records, model]
+    () =>
+      aggregateHealthPoints(
+        buildHealthPoints(records, model),
+        start,
+        granularity
+      ),
+    [records, model, start, granularity]
   )
+  const granularityItems = GRANULARITY_OPTIONS.map((option) => ({
+    value: String(option.value),
+    label: t(option.label),
+  }))
   const seriesDomain = useMemo(() => healthSeriesDomain(records), [records])
   const detailOpen = props.recordId != null
 
@@ -152,7 +164,7 @@ export function ChannelReportPanel(props: ChannelReportPanelProps) {
 
   return (
     <div className='flex min-w-0 flex-col gap-3'>
-      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)]'>
+      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,0.8fr)]'>
         <div className='grid gap-1.5'>
           <Label htmlFor='model-replacement-report-channel'>
             {t('Channel')}
@@ -213,9 +225,42 @@ export function ChannelReportPanel(props: ChannelReportPanelProps) {
             className='w-full'
           />
         </div>
+        <div className='grid gap-1.5'>
+          <Label htmlFor='model-replacement-report-granularity'>
+            {t('Time granularity')}
+          </Label>
+          <Select
+            items={granularityItems}
+            value={String(granularity)}
+            onValueChange={(value) => {
+              props.onRecordChange(null)
+              setGranularity(Number(value ?? 0))
+            }}
+          >
+            <SelectTrigger
+              id='model-replacement-report-granularity'
+              className='w-full'
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>
+                {granularityItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
       <p className='text-muted-foreground text-xs'>
-        {t('Click a point on the chart to see the requests of that run.')}
+        {granularity > 0
+          ? t(
+              'Each point averages the runs in its period, counted from the start of the date range. Click a point to see the latest run in that period.'
+            )
+          : t('Click a point on the chart to see the requests of that run.')}
       </p>
       <div
         className={cn(

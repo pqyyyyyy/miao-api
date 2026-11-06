@@ -123,7 +123,9 @@ export function HealthChart(props: HealthChartProps) {
             {
               key: (datum: HealthPoint) => datum.series,
               value: (datum: HealthPoint) =>
-                `${t('Match rate')} ${datum.percent}%`,
+                datum.runs
+                  ? `${t('Match rate')} ${datum.percent}% · ${t('Average of {{count}} runs', { count: datum.runs })}`
+                  : `${t('Match rate')} ${datum.percent}%`,
             },
           ],
         },
@@ -132,7 +134,10 @@ export function HealthChart(props: HealthChartProps) {
           content: [
             {
               key: (datum: HealthPoint) => datum.series,
-              value: (datum: HealthPoint) => `${datum.percent}%`,
+              value: (datum: HealthPoint) =>
+                datum.runs
+                  ? `${datum.percent}% (${t('Average of {{count}} runs', { count: datum.runs })})`
+                  : `${datum.percent}%`,
             },
           ],
         },

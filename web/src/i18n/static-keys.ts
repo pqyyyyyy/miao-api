@@ -969,4 +969,10 @@ export const STATIC_I18N_KEYS = [
   'Set to disabled',
   'Set tag',
   'Remove tag (if present)',
+  'Each run',
+  '1 hour',
+  '6 hours',
+  '12 hours',
+  '1 day',
+  '3 days',
 ] as const

@@ -62,13 +62,18 @@ export function formatTimeRange(startedAt: number, finishedAt: number): string {
 }
 
 export type HealthPoint = {
+  /** The run shown when the point is clicked; the latest run of a bucket. */
   recordId: number
   channelId: number
   /** Channel label; one line per channel when several are overlaid. */
   series: string
+  /** Unix seconds of the run, or of the bucket start once aggregated. */
+  timestamp: number
   time: string
   percent: number
   verdict: Verdict | null
+  /** Number of runs averaged into the point; absent for a single run. */
+  runs?: number
 }
 
 export function channelLabel(channel: {
@@ -96,7 +101,7 @@ export function buildHealthPoints(
       runStart.set(record.run_id, start)
     }
   }
-  const points: (HealthPoint & { start: number })[] = []
+  const points: HealthPoint[] = []
   for (const record of records) {
     const percent = getRecordMatchPercent(record, model)
     if (percent == null) continue
@@ -105,14 +110,88 @@ export function buildHealthPoints(
       recordId: record.id,
       channelId: record.channel_id,
       series: channelLabel(record),
+      timestamp: start,
       time: dayjs(start * 1000).format('MM-DD HH:mm:ss'),
-      start,
       percent: Math.round(percent * 100) / 100,
       verdict: getRecordVerdict(record, model),
     })
   }
-  points.sort((a, b) => a.start - b.start || a.channelId - b.channelId)
-  return points.map(({ start: _start, ...point }) => point)
+  points.sort((a, b) => a.timestamp - b.timestamp || a.channelId - b.channelId)
+  return points
+}
+
+/** Chart granularity choices in seconds; 0 plots every run. */
+export const GRANULARITY_OPTIONS = [
+  { value: 0, label: 'Each run' },
+  { value: 60 * 60, label: '1 hour' },
+  { value: 6 * 60 * 60, label: '6 hours' },
+  { value: 12 * 60 * 60, label: '12 hours' },
+  { value: 24 * 60 * 60, label: '1 day' },
+  { value: 3 * 24 * 60 * 60, label: '3 days' },
+] as const
+
+const VERDICT_SEVERITY: Record<Verdict, number> = {
+  passed: 1,
+  failed: 2,
+  replaced: 3,
+}
+
+/**
+ * Averages each channel's points into buckets of `granularity` seconds that
+ * start at `rangeStart`, the start of the selected date range. An aggregated
+ * point keeps the worst verdict and the latest run of its bucket, and counts
+ * the runs it averages. A granularity of 0 returns the points unchanged.
+ */
+export function aggregateHealthPoints(
+  points: HealthPoint[],
+  rangeStart: number,
+  granularity: number
+): HealthPoint[] {
+  if (granularity <= 0) return points
+  const buckets = new Map<
+    string,
+    { point: HealthPoint; latest: number; total: number; count: number }
+  >()
+  for (const point of points) {
+    const start =
+      rangeStart +
+      Math.floor((point.timestamp - rangeStart) / granularity) * granularity
+    const key = `${point.channelId}:${start}`
+    const bucket = buckets.get(key)
+    if (!bucket) {
+      buckets.set(key, {
+        point: {
+          ...point,
+          timestamp: start,
+          time: dayjs(start * 1000).format('MM-DD HH:mm'),
+        },
+        latest: point.timestamp,
+        total: point.percent,
+        count: 1,
+      })
+      continue
+    }
+    bucket.total += point.percent
+    bucket.count += 1
+    if (point.timestamp >= bucket.latest) {
+      bucket.latest = point.timestamp
+      bucket.point.recordId = point.recordId
+    }
+    const current = bucket.point.verdict
+    if (
+      point.verdict &&
+      (!current || VERDICT_SEVERITY[point.verdict] > VERDICT_SEVERITY[current])
+    ) {
+      bucket.point.verdict = point.verdict
+    }
+  }
+  return [...buckets.values()]
+    .map((bucket) => ({
+      ...bucket.point,
+      percent: Math.round((bucket.total / bucket.count) * 100) / 100,
+      runs: bucket.count,
+    }))
+    .sort((a, b) => a.timestamp - b.timestamp || a.channelId - b.channelId)
 }
 
 /**

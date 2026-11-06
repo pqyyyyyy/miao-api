@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { describe, expect, it } from 'vitest'
 
 import {
+  aggregateHealthPoints,
   buildHealthPoints,
   channelsForModel,
   getRecordMatchPercent,
@@ -26,6 +27,7 @@ import {
   healthSeriesDomain,
   splitByLatestVerdict,
   todayRange,
+  type HealthPoint,
 } from '../lib/report'
 import type { DetectionRecord } from '../types'
 
@@ -180,5 +182,92 @@ describe('todayRange', () => {
 
     expect(range.start).toEqual(new Date(2026, 10, 5, 0, 0, 0, 0))
     expect(range.end).toEqual(new Date(2026, 10, 5, 23, 59, 59, 999))
+  })
+})
+
+describe('aggregateHealthPoints', () => {
+  const point = (overrides: Partial<HealthPoint>): HealthPoint => ({
+    recordId: 1,
+    channelId: 7,
+    series: '#7 upstream',
+    timestamp: 0,
+    time: '',
+    percent: 100,
+    verdict: 'passed',
+    ...overrides,
+  })
+  // 00:30 local time, so buckets start at :30 rather than on the hour.
+  const rangeStart = new Date(2026, 10, 6, 0, 30).getTime() / 1000
+  const hour = 60 * 60
+
+  it('averages each channel per period counted from the start of the range', () => {
+    const points = [
+      point({ recordId: 1, timestamp: rangeStart + 60, percent: 100 }),
+      point({
+        recordId: 2,
+        timestamp: rangeStart + 600,
+        percent: 50,
+        verdict: 'replaced',
+      }),
+      point({ recordId: 3, timestamp: rangeStart + hour + 60, percent: 100 }),
+      point({
+        recordId: 9,
+        channelId: 2,
+        series: '#2 beta',
+        timestamp: rangeStart + 120,
+        percent: 0,
+        verdict: 'failed',
+      }),
+    ]
+
+    const result = aggregateHealthPoints(points, rangeStart, hour)
+
+    expect(
+      result.map(
+        ({ recordId, channelId, timestamp, percent, verdict, runs, time }) => ({
+          recordId,
+          channelId,
+          offset: timestamp - rangeStart,
+          percent,
+          verdict,
+          runs,
+          time,
+        })
+      )
+    ).toEqual([
+      {
+        recordId: 9,
+        channelId: 2,
+        offset: 0,
+        percent: 0,
+        verdict: 'failed',
+        runs: 1,
+        time: '11-06 00:30',
+      },
+      {
+        recordId: 2,
+        channelId: 7,
+        offset: 0,
+        percent: 75,
+        verdict: 'replaced',
+        runs: 2,
+        time: '11-06 00:30',
+      },
+      {
+        recordId: 3,
+        channelId: 7,
+        offset: hour,
+        percent: 100,
+        verdict: 'passed',
+        runs: 1,
+        time: '11-06 01:30',
+      },
+    ])
+  })
+
+  it('leaves the points unchanged when every run is plotted', () => {
+    const points = [point({ timestamp: rangeStart + 60 })]
+
+    expect(aggregateHealthPoints(points, rangeStart, 0)).toBe(points)
   })
 })
