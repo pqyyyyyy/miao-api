@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { LineChart } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -29,12 +30,15 @@ import { formatNumber, formatPercent } from '@/lib/format'
 
 import { describeAction } from '../../lib/actions'
 import {
+  DEFAULT_CHANNEL_SUMMARY_FILTER,
+  filterChannelSummary,
   formatTimeRange,
   getRecordMatchPercent,
   getRecordVerdict,
 } from '../../lib/report'
 import type { DetectionChannelRow } from '../../types'
 import { ChannelStatusBadge, VerdictBadge } from './badges'
+import { ChannelSummaryFilters } from './channel-filters'
 import { ModelRatesPopover } from './model-rates-popover'
 
 type ChannelSummaryTableProps = {
@@ -46,6 +50,11 @@ type ChannelSummaryTableProps = {
 export function ChannelSummaryTable(props: ChannelSummaryTableProps) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const [filter, setFilter] = useState(DEFAULT_CHANNEL_SUMMARY_FILTER)
+  const rows = useMemo(
+    () => filterChannelSummary(props.rows, filter, props.model),
+    [props.rows, filter, props.model]
+  )
 
   const columns: StaticDataTableColumn<DetectionChannelRow>[] = [
     {
@@ -163,12 +172,19 @@ export function ChannelSummaryTable(props: ChannelSummaryTableProps) {
   ]
 
   return (
-    <StaticDataTable
-      columns={columns}
-      data={props.rows}
-      getRowKey={(row) => row.id}
-      tableClassName='min-w-[900px]'
-      emptyContent={t('No channels are in detection scope yet.')}
-    />
+    <div className='flex flex-col gap-3'>
+      <ChannelSummaryFilters value={filter} onChange={setFilter} />
+      <StaticDataTable
+        columns={columns}
+        data={rows}
+        getRowKey={(row) => row.id}
+        tableClassName='min-w-[900px]'
+        emptyContent={
+          props.rows.length > 0
+            ? t('No matching channels')
+            : t('No channels are in detection scope yet.')
+        }
+      />
+    </div>
   )
 }

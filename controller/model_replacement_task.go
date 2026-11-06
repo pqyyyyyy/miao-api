@@ -248,7 +248,7 @@ func runModelReplacementDetection(ctx context.Context, runID string, manual bool
 	if cacheChanged {
 		model.InitChannelCache()
 	}
-	if err := model.DeleteModelReplacementRecordsBefore(time.Now().Add(-modelReplacementRecordRetention).Unix()); err != nil {
+	if err := model.PurgeModelReplacementRecords(time.Now().Add(-modelReplacementRecordRetention).Unix()); err != nil {
 		common.SysError(common.LogText("model replacement detection failed to delete old records: %v", err))
 	}
 	summary.FinishedAt = common.GetTimestamp()

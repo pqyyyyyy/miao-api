@@ -388,15 +388,18 @@ func TestApplyModelReplacementActions(t *testing.T) {
 	assert.Equal(t, common.ChannelStatusManuallyDisabled, reload(paused.Id).Status, "a channel disabled by an administrator during the run is left alone")
 }
 
-func TestModelReplacementRecordsLatestAndRetention(t *testing.T) {
-	setupModelReplacementTestDB(t)
+func TestModelReplacementRecordsLeaveOutDeletedChannelsAndPurge(t *testing.T) {
+	db := setupModelReplacementTestDB(t)
+	require.NoError(t, db.Create(&[]model.Channel{{Id: 1, Name: "one"}, {Id: 2, Name: "two"}, {Id: 3, Name: "deleted"}}).Error)
 	create := func(channelID int, createdAt int64) {
 		record := &model.ModelReplacementRecord{ChannelID: channelID, Verdict: model.ModelReplacementVerdictPassed, CreatedAt: createdAt}
 		require.NoError(t, model.CreateModelReplacementRecord(record, []model.ModelReplacementAttempt{{Model: "m", Round: 1}, {Model: "m", Round: 2}}))
 	}
 	create(1, 100)
 	create(2, 100)
+	create(3, 300)
 	create(1, 200)
+	require.NoError(t, db.Delete(&model.Channel{Id: 3}).Error)
 
 	latest, err := model.GetLatestModelReplacementRecords()
 	require.NoError(t, err)
@@ -404,26 +407,49 @@ func TestModelReplacementRecordsLatestAndRetention(t *testing.T) {
 	for _, record := range latest {
 		latestByChannel[record.ChannelID] = record.CreatedAt
 	}
-	assert.Equal(t, map[int]int64{1: 200, 2: 100}, latestByChannel)
+	assert.Equal(t, map[int]int64{1: 200, 2: 100, 3: 300}, latestByChannel)
 
-	inRange, err := model.GetModelReplacementHistory(0, 50, 150, 10)
-	require.NoError(t, err)
-	assert.Equal(t, []int{1, 2}, []int{inRange[0].ChannelID, inRange[1].ChannelID}, "every channel within the range, oldest first")
-	require.Len(t, inRange, 2)
-	oneChannel, err := model.GetModelReplacementHistory(1, 0, 1000, 10)
-	require.NoError(t, err)
-	assert.Equal(t, []int64{100, 200}, []int64{oneChannel[0].CreatedAt, oneChannel[1].CreatedAt})
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/model_replacement/channels", nil)
+	GetModelReplacementChannels(c)
+	var listed struct {
+		Data []struct {
+			ID int `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &listed))
+	listedIDs := make([]int, 0, len(listed.Data))
+	for _, row := range listed.Data {
+		listedIDs = append(listedIDs, row.ID)
+	}
+	assert.Equal(t, []int{1, 2}, listedIDs, "a deleted channel is not listed")
 
-	require.NoError(t, model.DeleteModelReplacementRecordsBefore(150))
-	history, err := model.GetModelReplacementHistory(1, 0, math.MaxInt64, 10)
+	all, err := model.GetModelReplacementHistory(0, 0, math.MaxInt64, 10)
 	require.NoError(t, err)
-	require.Len(t, history, 1)
-	attempts, err := model.GetModelReplacementAttempts(history[0].ID)
+	allChannels := make([]int, 0, len(all))
+	for _, record := range all {
+		allChannels = append(allChannels, record.ChannelID)
+	}
+	assert.Equal(t, []int{1, 2, 1}, allChannels, "every remaining channel, oldest first, without the deleted one")
+	inRange, err := model.GetModelReplacementHistory(1, 50, 150, 10)
 	require.NoError(t, err)
-	assert.Len(t, attempts, 2)
-	var remainingAttempts int64
-	require.NoError(t, model.DB.Model(&model.ModelReplacementAttempt{}).Count(&remainingAttempts).Error)
-	assert.EqualValues(t, 2, remainingAttempts)
+	require.Len(t, inRange, 1)
+	assert.EqualValues(t, 100, inRange[0].CreatedAt)
+	deleted, err := model.GetModelReplacementHistory(3, 0, math.MaxInt64, 10)
+	require.NoError(t, err)
+	assert.Empty(t, deleted)
+
+	require.NoError(t, model.PurgeModelReplacementRecords(150))
+	var remaining []model.ModelReplacementRecord
+	require.NoError(t, db.Find(&remaining).Error)
+	require.Len(t, remaining, 1, "expired records and the deleted channel's newer record are purged")
+	assert.Equal(t, 1, remaining[0].ChannelID)
+	assert.EqualValues(t, 200, remaining[0].CreatedAt)
+	var remainingAttempts []model.ModelReplacementAttempt
+	require.NoError(t, db.Find(&remainingAttempts).Error)
+	require.Len(t, remainingAttempts, 2)
+	assert.Equal(t, remaining[0].ID, remainingAttempts[0].RecordID)
 }
 
 func TestModelReplacementDetectionProbesChannelsAndAppliesVerdicts(t *testing.T) {

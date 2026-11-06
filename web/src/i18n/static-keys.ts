@@ -975,6 +975,10 @@ export const STATIC_I18N_KEYS = [
   '12 hours',
   '1 day',
   '3 days',
+  // Channel summary status filter (model-replacement/components/report/channel-filters.tsx).
+  'All statuses',
+  'Healthy channels',
+  'Abnormal channels',
   // Usage limit window states (components/usage-rule-progress.tsx).
   'Not started',
   'In progress',

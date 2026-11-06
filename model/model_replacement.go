@@ -129,10 +129,11 @@ func GetLatestModelReplacementRecords() ([]*ModelReplacementRecord, error) {
 
 // GetModelReplacementHistory returns records created between start and end
 // (Unix seconds, inclusive) in chronological order, for one channel or, with
-// channelID 0, for every channel. When more than limit records match, the most
-// recent limit are returned.
+// channelID 0, for every channel. Records of deleted channels are left out.
+// When more than limit records match, the most recent limit are returned.
 func GetModelReplacementHistory(channelID int, start int64, end int64, limit int) ([]*ModelReplacementRecord, error) {
-	query := DB.Where("created_at >= ? AND created_at <= ?", start, end)
+	query := DB.Where("created_at >= ? AND created_at <= ?", start, end).
+		Where("channel_id IN (?)", DB.Model(&Channel{}).Select("id"))
 	if channelID > 0 {
 		query = query.Where("channel_id = ?", channelID)
 	}
@@ -158,15 +159,18 @@ func GetModelReplacementAttempts(recordID int64) ([]*ModelReplacementAttempt, er
 	return attempts, err
 }
 
-// DeleteModelReplacementRecordsBefore removes records created before the
-// timestamp along with their attempts.
-func DeleteModelReplacementRecordsBefore(timestamp int64) error {
+// PurgeModelReplacementRecords removes, along with their attempts, the records
+// created before the timestamp and every record of a channel that has been
+// deleted, so a deleted channel leaves no detection history behind.
+func PurgeModelReplacementRecords(before int64) error {
+	const purgedCondition = "created_at < ? OR channel_id NOT IN (?)"
 	return DB.Transaction(func(tx *gorm.DB) error {
-		expiredIDs := tx.Model(&ModelReplacementRecord{}).Select("id").Where("created_at < ?", timestamp)
-		if err := tx.Where("record_id IN (?)", expiredIDs).Delete(&ModelReplacementAttempt{}).Error; err != nil {
+		purgedIDs := tx.Model(&ModelReplacementRecord{}).Select("id").
+			Where(purgedCondition, before, tx.Model(&Channel{}).Select("id"))
+		if err := tx.Where("record_id IN (?)", purgedIDs).Delete(&ModelReplacementAttempt{}).Error; err != nil {
 			return err
 		}
-		return tx.Where("created_at < ?", timestamp).Delete(&ModelReplacementRecord{}).Error
+		return tx.Where(purgedCondition, before, tx.Model(&Channel{}).Select("id")).Delete(&ModelReplacementRecord{}).Error
 	})
 }
 

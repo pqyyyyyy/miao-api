@@ -139,3 +139,107 @@ describe('ChannelSummaryTable actions', () => {
     ).toBeDisabled()
   })
 })
+
+describe('ChannelSummaryTable filters', () => {
+  const filterRows: DetectionChannelRow[] = [
+    ...rows,
+    {
+      id: 9,
+      name: 'retired',
+      type: 1,
+      status: 1,
+      groups: ['default'],
+      in_scope: false,
+      latest: { ...latest, id: 12, channel_id: 9, channel_name: 'retired' },
+    },
+    {
+      id: 10,
+      name: 'paused',
+      type: 1,
+      status: 3,
+      groups: ['default'],
+      in_scope: true,
+      latest: { ...latest, id: 13, channel_id: 10, channel_name: 'paused' },
+    },
+  ]
+
+  it('hides a channel no longer in detection scope until the hide option is cleared', async () => {
+    const user = userEvent.setup()
+    render(
+      <ChannelSummaryTable
+        rows={filterRows}
+        model={null}
+        onViewReport={vi.fn()}
+      />
+    )
+    const hide = screen.getByRole('checkbox', {
+      name: 'Hide channels no longer in detection scope',
+    })
+
+    expect(hide).toBeChecked()
+    expect(screen.queryByText('retired')).not.toBeInTheDocument()
+
+    await user.click(hide)
+
+    expect(hide).not.toBeChecked()
+    expect(screen.getByText('retired')).toBeInTheDocument()
+  })
+
+  it('narrows the table to the typed channel ID', async () => {
+    const user = userEvent.setup()
+    render(
+      <ChannelSummaryTable
+        rows={filterRows}
+        model={null}
+        onViewReport={vi.fn()}
+      />
+    )
+
+    await user.type(
+      screen.getByRole('textbox', { name: 'Search by channel ID' }),
+      '8'
+    )
+
+    expect(screen.getByText('fresh')).toBeInTheDocument()
+    expect(screen.queryByText('upstream')).not.toBeInTheDocument()
+    expect(screen.queryByText('paused')).not.toBeInTheDocument()
+  })
+
+  it('says that no channel matches when the filters exclude every channel', async () => {
+    const user = userEvent.setup()
+    render(
+      <ChannelSummaryTable
+        rows={filterRows}
+        model={null}
+        onViewReport={vi.fn()}
+      />
+    )
+
+    await user.type(
+      screen.getByRole('textbox', { name: 'Search by channel ID' }),
+      '99'
+    )
+
+    expect(screen.getByText('No matching channels')).toBeInTheDocument()
+  })
+
+  it('keeps only auto-disabled channels after choosing that status', async () => {
+    const user = userEvent.setup()
+    render(
+      <ChannelSummaryTable
+        rows={filterRows}
+        model={null}
+        onViewReport={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByRole('combobox', { name: 'Filter by status' }))
+    await user.click(
+      await screen.findByRole('option', { name: 'Auto Disabled' })
+    )
+
+    expect(screen.getByText('paused')).toBeInTheDocument()
+    expect(screen.queryByText('upstream')).not.toBeInTheDocument()
+    expect(screen.queryByText('fresh')).not.toBeInTheDocument()
+  })
+})

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -26,24 +26,35 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatPercent, formatTimestampToDate } from '@/lib/format'
 
+import { splitByLatestVerdict } from '../../lib/report'
 import type { DetectionChannelRow } from '../../types'
 import { ChannelStatusBadge, VerdictBadge } from './badges'
+import { HideOutOfScopeCheckbox } from './channel-filters'
 
 type HealthTab = 'healthy' | 'abnormal'
 
 type HealthChannelTabsProps = {
-  healthy: DetectionChannelRow[]
-  abnormal: DetectionChannelRow[]
+  rows: DetectionChannelRow[]
 }
 
 /**
  * Lists channels by their latest detection result. The lists are kept by
  * detection itself, not read from channel groups, so a channel appears only
  * after it has been detected and moves when a later run changes its result.
+ * Channels no longer in detection scope are hidden unless the viewer asks
+ * for them.
  */
 export function HealthChannelTabs(props: HealthChannelTabsProps) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<HealthTab>('healthy')
+  const [hideOutOfScope, setHideOutOfScope] = useState(true)
+  const lists = useMemo(
+    () =>
+      splitByLatestVerdict(
+        hideOutOfScope ? props.rows.filter((row) => row.in_scope) : props.rows
+      ),
+    [props.rows, hideOutOfScope]
+  )
 
   const columns: StaticDataTableColumn<DetectionChannelRow>[] = [
     {
@@ -89,18 +100,26 @@ export function HealthChannelTabs(props: HealthChannelTabsProps) {
 
   return (
     <Tabs value={tab} onValueChange={(value) => setTab(value as HealthTab)}>
-      <TabsList aria-label={t('Healthy and abnormal channels')}>
-        <TabsTrigger value='healthy'>
-          {t('Healthy channels ({{count}})', { count: props.healthy.length })}
-        </TabsTrigger>
-        <TabsTrigger value='abnormal'>
-          {t('Abnormal channels ({{count}})', { count: props.abnormal.length })}
-        </TabsTrigger>
-      </TabsList>
+      <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+        <TabsList aria-label={t('Healthy and abnormal channels')}>
+          <TabsTrigger value='healthy'>
+            {t('Healthy channels ({{count}})', { count: lists.healthy.length })}
+          </TabsTrigger>
+          <TabsTrigger value='abnormal'>
+            {t('Abnormal channels ({{count}})', {
+              count: lists.abnormal.length,
+            })}
+          </TabsTrigger>
+        </TabsList>
+        <HideOutOfScopeCheckbox
+          checked={hideOutOfScope}
+          onCheckedChange={setHideOutOfScope}
+        />
+      </div>
       <TabsContent value='healthy'>
         <StaticDataTable
           columns={columns}
-          data={props.healthy}
+          data={lists.healthy}
           getRowKey={(row) => row.id}
           tableClassName='min-w-[720px]'
           emptyContent={t('No channels in this list.')}
@@ -109,7 +128,7 @@ export function HealthChannelTabs(props: HealthChannelTabsProps) {
       <TabsContent value='abnormal'>
         <StaticDataTable
           columns={columns}
-          data={props.abnormal}
+          data={lists.abnormal}
           getRowKey={(row) => row.id}
           tableClassName='min-w-[720px]'
           emptyContent={t('No channels in this list.')}

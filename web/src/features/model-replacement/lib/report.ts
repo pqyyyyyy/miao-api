@@ -18,7 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import dayjs from 'dayjs'
 
-import type { DetectionRecord, Verdict } from '../types'
+import { CHANNEL_STATUS } from '@/features/channels/constants'
+
+import type { DetectionChannelRow, DetectionRecord, Verdict } from '../types'
 
 /**
  * Match percentage of a record. With a model selected it is that model's
@@ -237,6 +239,49 @@ export function channelsForModel<T extends { latest: DetectionRecord | null }>(
   return rows.filter((row) =>
     row.latest?.models.some((stat) => stat.model === model && stat.total > 0)
   )
+}
+
+export type ChannelStatusFilter =
+  | 'all'
+  | 'healthy'
+  | 'abnormal'
+  | 'auto_disabled'
+
+export type ChannelSummaryFilter = {
+  /** Channel ID as typed, with or without a leading #; empty matches all. */
+  channelId: string
+  status: ChannelStatusFilter
+  /** Hides channels detected before but no longer in detection scope. */
+  hideOutOfScope: boolean
+}
+
+export const DEFAULT_CHANNEL_SUMMARY_FILTER: ChannelSummaryFilter = {
+  channelId: '',
+  status: 'all',
+  hideOutOfScope: true,
+}
+
+/**
+ * Narrows the channel summary. Healthy and abnormal follow the result the
+ * table shows for the selected model (the worst model when none is selected),
+ * so a channel that has not been detected for it is neither; auto-disabled
+ * follows the channel status.
+ */
+export function filterChannelSummary<
+  T extends Pick<DetectionChannelRow, 'id' | 'status' | 'in_scope' | 'latest'>,
+>(rows: T[], filter: ChannelSummaryFilter, model: string | null): T[] {
+  const channelId = filter.channelId.trim().replace(/^#/, '')
+  return rows.filter((row) => {
+    if (filter.hideOutOfScope && !row.in_scope) return false
+    if (channelId && String(row.id) !== channelId) return false
+    if (filter.status === 'all') return true
+    if (filter.status === 'auto_disabled') {
+      return row.status === CHANNEL_STATUS.AUTO_DISABLED
+    }
+    const verdict = row.latest ? getRecordVerdict(row.latest, model) : null
+    if (!verdict) return false
+    return (verdict === 'passed') === (filter.status === 'healthy')
+  })
 }
 
 /** The chart's default date range: today in local time. */

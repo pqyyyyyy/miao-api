@@ -22,6 +22,8 @@ import {
   aggregateHealthPoints,
   buildHealthPoints,
   channelsForModel,
+  DEFAULT_CHANNEL_SUMMARY_FILTER,
+  filterChannelSummary,
   getRecordMatchPercent,
   getRecordVerdict,
   healthSeriesDomain,
@@ -29,7 +31,7 @@ import {
   todayRange,
   type HealthPoint,
 } from '../lib/report'
-import type { DetectionRecord } from '../types'
+import type { DetectionChannelRow, DetectionRecord } from '../types'
 
 function record(overrides: Partial<DetectionRecord> = {}): DetectionRecord {
   return {
@@ -269,5 +271,86 @@ describe('aggregateHealthPoints', () => {
     const points = [point({ timestamp: rangeStart + 60 })]
 
     expect(aggregateHealthPoints(points, rangeStart, 0)).toBe(points)
+  })
+})
+
+describe('filterChannelSummary', () => {
+  const row = (
+    overrides: Partial<DetectionChannelRow> & { id: number }
+  ): DetectionChannelRow => ({
+    name: `channel-${overrides.id}`,
+    type: 1,
+    status: 1,
+    groups: [],
+    in_scope: true,
+    latest: record({ verdict: 'passed' }),
+    ...overrides,
+  })
+  const rows = [
+    row({ id: 1 }),
+    row({ id: 2, status: 3, latest: record({ verdict: 'replaced' }) }),
+    row({ id: 3, in_scope: false }),
+    row({ id: 12, latest: null }),
+  ]
+  const ids = (filtered: DetectionChannelRow[]) =>
+    filtered.map((item) => item.id)
+
+  it('hides channels no longer in detection scope by default and keeps them once the option is off', () => {
+    expect(
+      ids(filterChannelSummary(rows, DEFAULT_CHANNEL_SUMMARY_FILTER, null))
+    ).toEqual([1, 2, 12])
+    expect(
+      ids(
+        filterChannelSummary(
+          rows,
+          { ...DEFAULT_CHANNEL_SUMMARY_FILTER, hideOutOfScope: false },
+          null
+        )
+      )
+    ).toEqual([1, 2, 3, 12])
+  })
+
+  it('matches the typed channel ID exactly, with or without a leading #', () => {
+    const byId = (channelId: string) =>
+      ids(
+        filterChannelSummary(
+          rows,
+          { ...DEFAULT_CHANNEL_SUMMARY_FILTER, channelId },
+          null
+        )
+      )
+
+    expect(byId('1')).toEqual([1])
+    expect(byId(' #12 ')).toEqual([12])
+    expect(byId('abc')).toEqual([])
+  })
+
+  it('sorts healthy and abnormal by the result shown for the selected model and skips undetected channels', () => {
+    const byStatus = (status: 'healthy' | 'abnormal', model: string | null) =>
+      ids(
+        filterChannelSummary(
+          rows,
+          { ...DEFAULT_CHANNEL_SUMMARY_FILTER, status },
+          model
+        )
+      )
+
+    expect(byStatus('healthy', null)).toEqual([1])
+    expect(byStatus('abnormal', null)).toEqual([2])
+    // Both records passed gpt-4o, whatever their worst model did.
+    expect(byStatus('healthy', 'gpt-4o')).toEqual([1, 2])
+    expect(byStatus('abnormal', 'claude')).toEqual([1, 2])
+  })
+
+  it('keeps only automatically disabled channels for the auto-disabled status', () => {
+    expect(
+      ids(
+        filterChannelSummary(
+          rows,
+          { ...DEFAULT_CHANNEL_SUMMARY_FILTER, status: 'auto_disabled' },
+          null
+        )
+      )
+    ).toEqual([2])
   })
 })

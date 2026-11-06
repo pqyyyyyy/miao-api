@@ -118,7 +118,16 @@ export function ModelReplacement() {
     { value: ALL_MODELS, label: t('All models (worst)') },
     ...models.map((name) => ({ value: name, label: name })),
   ]
-  const healthLists = useMemo(() => splitByLatestVerdict(rows), [rows])
+  // The overview counts the channels detection currently covers, the same
+  // channels the healthy and abnormal lists show by default.
+  const healthCounts = useMemo(
+    () => splitByLatestVerdict(rows.filter((row) => row.in_scope)),
+    [rows]
+  )
+  // A chart channel that has since been deleted falls back to all channels.
+  const chartChannelId = detectedRows.some((row) => row.id === channelId)
+    ? channelId
+    : null
 
   const handleViewReport = (id: number) => {
     setChannelId(id)
@@ -140,8 +149,8 @@ export function ModelReplacement() {
       <div className='flex flex-col gap-4'>
         <OverviewCards
           overview={overview}
-          healthyCount={healthLists.healthy.length}
-          abnormalCount={healthLists.abnormal.length}
+          healthyCount={healthCounts.healthy.length}
+          abnormalCount={healthCounts.abnormal.length}
           isStarting={runMutation.isPending}
           onRunNow={() => runMutation.mutate()}
         />
@@ -205,7 +214,7 @@ export function ModelReplacement() {
             <ChannelReportPanel
               channels={detectedRows}
               models={models}
-              channelId={channelId}
+              channelId={chartChannelId}
               onChannelChange={setChannelId}
               recordId={recordId}
               onRecordChange={setRecordId}
@@ -221,10 +230,7 @@ export function ModelReplacement() {
           icon={<HeartPulse aria-hidden='true' />}
           disableHoverEffect
         >
-          <HealthChannelTabs
-            healthy={healthLists.healthy}
-            abnormal={healthLists.abnormal}
-          />
+          <HealthChannelTabs rows={rows} />
         </TitledCard>
       </div>
     )
