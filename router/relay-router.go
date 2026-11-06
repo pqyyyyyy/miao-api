@@ -78,6 +78,7 @@ func SetRelayRouter(router *gin.Engine) {
 		relayV1Router.GET("/responses", controller.ResponsesWebSocket)
 	}
 	relayV1Router.Use(middleware.ModelRequestRateLimit())
+	relayV1Router.Use(middleware.UserConcurrencyLimit())
 	{
 		// WebSocket 路由（统一到 Relay）
 		wsRouter := relayV1Router.Group("")
@@ -212,6 +213,7 @@ func SetRelayRouter(router *gin.Engine) {
 	relayGeminiRouter.Use(middleware.SystemPerformanceCheck())
 	relayGeminiRouter.Use(middleware.TokenAuth())
 	relayGeminiRouter.Use(middleware.ModelRequestRateLimit())
+	relayGeminiRouter.Use(middleware.UserConcurrencyLimit())
 	relayGeminiRouter.Use(middleware.Distribute())
 	{
 		// Gemini API 路径格式: /v1beta/models/{model_name}:{action}
@@ -224,22 +226,24 @@ func SetRelayRouter(router *gin.Engine) {
 func registerMjRouterGroup(relayMjRouter *gin.RouterGroup) {
 	relayMjRouter.GET("/image/:id", relay.RelayMidjourneyImage)
 	relayMjRouter.Use(middleware.TokenAuth(), middleware.Distribute())
+	// Only submissions count toward the user concurrency limit; task queries do not.
+	submitLimit := middleware.MidjourneyUserConcurrencyLimit()
 	{
-		relayMjRouter.POST("/submit/action", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/shorten", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/modal", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/imagine", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/change", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/simple-change", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/describe", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/blend", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/edits", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/video", controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/action", submitLimit, controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/shorten", submitLimit, controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/modal", submitLimit, controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/imagine", submitLimit, controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/change", submitLimit, controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/simple-change", submitLimit, controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/describe", submitLimit, controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/blend", submitLimit, controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/edits", submitLimit, controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/video", submitLimit, controller.RelayMidjourney)
 		//relayMjRouter.POST("/notify", controller.RelayMidjourney)
 		relayMjRouter.GET("/task/:id/fetch", controller.RelayMidjourney)
 		relayMjRouter.GET("/task/:id/image-seed", controller.RelayMidjourney)
 		relayMjRouter.POST("/task/list-by-condition", controller.RelayMidjourney)
-		relayMjRouter.POST("/insight-face/swap", controller.RelayMidjourney)
-		relayMjRouter.POST("/submit/upload-discord-images", controller.RelayMidjourney)
+		relayMjRouter.POST("/insight-face/swap", submitLimit, controller.RelayMidjourney)
+		relayMjRouter.POST("/submit/upload-discord-images", submitLimit, controller.RelayMidjourney)
 	}
 }

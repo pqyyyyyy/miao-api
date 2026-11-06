@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -13,8 +14,10 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -297,4 +300,77 @@ func TestPreConsumeBillingAppliesUsageLimitOutsidePlayground(t *testing.T) {
 			assert.Equal(t, tc.wantCode, apiErr.GetErrorCode())
 		})
 	}
+}
+
+func useUserConcurrencyRedis(t *testing.T) *redis.Client {
+	t.Helper()
+	previousEnabled, previousClient := common.RedisEnabled, common.RDB
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	common.RedisEnabled = true
+	common.RDB = client
+	t.Cleanup(func() {
+		_ = client.Close()
+		common.RedisEnabled = previousEnabled
+		common.RDB = previousClient
+	})
+	return client
+}
+
+func TestUserConcurrencyLeasesCountInFlightRequests(t *testing.T) {
+	for i, backend := range []string{"memory", "redis"} {
+		t.Run(backend, func(t *testing.T) {
+			if backend == "redis" {
+				useUserConcurrencyRedis(t)
+			} else {
+				previousEnabled := common.RedisEnabled
+				common.RedisEnabled = false
+				t.Cleanup(func() { common.RedisEnabled = previousEnabled })
+			}
+			userId := 9200 + i
+
+			first, acquired, err := AcquireUserConcurrency(userId, 2)
+			require.NoError(t, err)
+			require.True(t, acquired)
+			second, acquired, err := AcquireUserConcurrency(userId, 2)
+			require.NoError(t, err)
+			require.True(t, acquired)
+			_, acquired, err = AcquireUserConcurrency(userId, 2)
+			require.NoError(t, err)
+			assert.False(t, acquired, "a third request exceeds the limit of 2")
+
+			first.Release()
+			first.Release() // releasing twice frees one slot only
+			inUse, err := GetUserConcurrencyInUse(userId)
+			require.NoError(t, err)
+			assert.Equal(t, 1, inUse)
+
+			third, acquired, err := AcquireUserConcurrency(userId, 2)
+			require.NoError(t, err)
+			assert.True(t, acquired, "a released slot can be taken again")
+			second.Release()
+			third.Release()
+			inUse, err = GetUserConcurrencyInUse(userId)
+			require.NoError(t, err)
+			assert.Zero(t, inUse)
+		})
+	}
+}
+
+func TestRedisUserConcurrencyIgnoresExpiredLeases(t *testing.T) {
+	client := useUserConcurrencyRedis(t)
+	userId := 9210
+	// A lease left behind by an instance that stopped without releasing it.
+	require.NoError(t, client.ZAdd(t.Context(), userConcurrencyKey(userId), &redis.Z{
+		Score:  float64(time.Now().Add(-time.Second).UnixMilli()),
+		Member: "crashed-instance-lease",
+	}).Err())
+
+	lease, acquired, err := AcquireUserConcurrency(userId, 1)
+	require.NoError(t, err)
+	require.True(t, acquired, "an expired lease no longer occupies a slot")
+	inUse, err := GetUserConcurrencyInUse(userId)
+	require.NoError(t, err)
+	assert.Equal(t, 1, inUse)
+	lease.Release()
 }
