@@ -1432,6 +1432,18 @@ func UpdateUserLastLoginAt(id int) {
 }
 
 func UpdateUserUsedQuotaAndRequestCount(id int, quota int) {
+	RecordUserUsageWindows(id, quota)
+	addUserUsedQuotaAndRequestCount(id, quota)
+}
+
+// UpdatePlaygroundUserUsedQuotaAndRequestCount records playground usage in
+// used_quota and request_count only: playground requests never count toward
+// the user's usage limit windows.
+func UpdatePlaygroundUserUsedQuotaAndRequestCount(id int, quota int) {
+	addUserUsedQuotaAndRequestCount(id, quota)
+}
+
+func addUserUsedQuotaAndRequestCount(id int, quota int) {
 	if common.BatchUpdateEnabled {
 		addNewRecord(BatchUpdateTypeUsedQuota, id, quota)
 		addNewRecord(BatchUpdateTypeRequestCount, id, 1)
@@ -1442,6 +1454,7 @@ func UpdateUserUsedQuotaAndRequestCount(id int, quota int) {
 
 // UpdateUserUsedQuota adjusts accumulated usage without changing request count.
 func UpdateUserUsedQuota(id int, quota int) {
+	RecordUserUsageWindows(id, quota)
 	if common.BatchUpdateEnabled {
 		addNewRecord(BatchUpdateTypeUsedQuota, id, quota)
 		return

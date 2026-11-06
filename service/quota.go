@@ -146,10 +146,15 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(quota))
 	}
 
+	if apiErr := CheckUserUsageLimit(ctx, relayInfo.UserId, int64(relayInfo.RealtimeChargedQuota)); apiErr != nil {
+		return apiErr
+	}
+
 	err = PostConsumeQuota(relayInfo, quota, 0, false)
 	if err != nil {
 		return err
 	}
+	relayInfo.RealtimeChargedQuota += quota
 	logger.LogInfo(ctx, common.LogText("realtime streaming consume quota success, quota: %d", quota))
 	return nil
 }
