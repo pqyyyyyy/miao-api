@@ -969,4 +969,8 @@ export const STATIC_I18N_KEYS = [
   'Set to disabled',
   'Set tag',
   'Remove tag (if present)',
+  // Usage limit window states (components/usage-rule-progress.tsx).
+  'Not started',
+  'In progress',
+  'Exhausted',
 ] as const
