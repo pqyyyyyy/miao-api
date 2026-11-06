@@ -724,3 +724,143 @@ func TestUpdateUserSettingKeepsWhatTheRequestLeavesOut(t *testing.T) {
 		})
 	}
 }
+
+type userLimitsTestResponse struct {
+	Success bool           `json:"success"`
+	Message string         `json:"message"`
+	Data    userLimitsView `json:"data"`
+}
+
+func setupUserLimitsTest(t *testing.T) (*gorm.DB, model.User) {
+	t.Helper()
+	db := setupManageUserTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.UserLimitPolicy{}, &model.UserUsageWindow{}))
+	createQuotaTestOperator(t, db, common.RoleRootUser)
+	user := model.User{Username: "limited-user", Role: common.RoleCommonUser, AffCode: "limited-user-aff"}
+	require.NoError(t, db.Create(&user).Error)
+	t.Cleanup(func() { model.InvalidateUserLimitSnapshot(user.Id) })
+	return db, user
+}
+
+// performUserLimitsRequest drives a user limits handler for the :id user as
+// an operator of the given role.
+func performUserLimitsRequest(t *testing.T, handler gin.HandlerFunc, method string, targetId int, operatorRole int, body string) userLimitsTestResponse {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(method, fmt.Sprintf("/api/user/%d/limits", targetId), strings.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Params = gin.Params{{Key: "id", Value: strconv.Itoa(targetId)}}
+	c.Set("id", 9999)
+	c.Set("role", operatorRole)
+	c.Set("username", "root-operator")
+	c.Set(common.RequestIdKey, "limits-test-request")
+	handler(c)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response userLimitsTestResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	return response
+}
+
+func TestUpdateUserLimitsRejectsInvalidRulesWithoutSaving(t *testing.T) {
+	_, user := setupUserLimitsTest(t)
+	for _, tc := range []struct{ name, body, message string }{
+		{"negative concurrency", `{"max_concurrency":-1}`, "Maximum concurrency must be between 0 and 1000"},
+		{"concurrency above the cap", `{"max_concurrency":1001}`, "Maximum concurrency must be between 0 and 1000"},
+		{"window not in whole hours", `{"usage_rules":[{"window_seconds":5400,"quota_limit":100,"enabled":true}]}`, "Usage limit windows must be whole hours between 1 hour and 90 days"},
+		{"window longer than 90 days", `{"usage_rules":[{"window_seconds":7862400,"quota_limit":100,"enabled":true}]}`, "Usage limit windows must be whole hours between 1 hour and 90 days"},
+		{"zero quota limit", `{"usage_rules":[{"window_seconds":18000,"quota_limit":0,"enabled":true}]}`, "Usage limit quota is out of range"},
+		{"duplicate window", `{"usage_rules":[{"window_seconds":18000,"quota_limit":100,"enabled":true},{"window_seconds":18000,"quota_limit":200,"enabled":false}]}`, "Each usage limit window can only be used once"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response := performUserLimitsRequest(t, UpdateUserLimits, http.MethodPut, user.Id, common.RoleRootUser, tc.body)
+			assert.False(t, response.Success)
+			assert.Equal(t, tc.message, response.Message)
+			snapshot, err := model.LoadUserLimitSnapshot(user.Id)
+			require.NoError(t, err)
+			assert.Equal(t, model.UserLimitSnapshot{}, snapshot)
+		})
+	}
+}
+
+func TestUpdateUserLimitsSavesPolicyAndRecordsAudit(t *testing.T) {
+	_, user := setupUserLimitsTest(t)
+	body := `{"max_concurrency":3,"usage_rules":[{"window_seconds":18000,"quota_limit":500,"enabled":true},{"window_seconds":604800,"quota_limit":2000,"enabled":false}]}`
+
+	response := performUserLimitsRequest(t, UpdateUserLimits, http.MethodPut, user.Id, common.RoleRootUser, body)
+
+	require.True(t, response.Success, response.Message)
+	assert.Equal(t, 3, response.Data.MaxConcurrency)
+	require.Len(t, response.Data.UsageRules, 2)
+	assert.Equal(t, service.UserUsageRuleStatus{WindowSeconds: 18000, QuotaLimit: 500, Enabled: true, Status: service.UserUsageWindowIdle}, response.Data.UsageRules[0])
+	assert.Equal(t, service.UserUsageRuleStatus{WindowSeconds: 604800, QuotaLimit: 2000, Enabled: false, Status: service.UserUsageWindowIdle}, response.Data.UsageRules[1])
+
+	var audits []model.AuditLog
+	require.NoError(t, model.LOG_DB.Find(&audits).Error)
+	require.Len(t, audits, 1)
+	assert.Equal(t, "user.limits_update", audits[0].Action)
+	assert.Equal(t, "Updated usage limits of user limited-user", audits[0].Content)
+	require.NotNil(t, audits[0].Other.Op)
+	params, err := common.Marshal(audits[0].Other.Op.Params)
+	require.NoError(t, err)
+	assert.Contains(t, string(params), fmt.Sprintf(`"target_user_id":%d`, user.Id))
+	assert.Contains(t, string(params), `"max_concurrency":3`)
+}
+
+func TestUserLimitsRequireAHigherRoleThanTheTarget(t *testing.T) {
+	db, _ := setupUserLimitsTest(t)
+	admin := model.User{Username: "limited-admin", Role: common.RoleAdminUser, AffCode: "limited-admin-aff"}
+	require.NoError(t, db.Create(&admin).Error)
+	t.Cleanup(func() { model.InvalidateUserLimitSnapshot(admin.Id) })
+
+	response := performUserLimitsRequest(t, GetUserLimits, http.MethodGet, admin.Id, common.RoleAdminUser, "")
+	assert.False(t, response.Success)
+	assert.Equal(t, "No permission to access users of same or higher level", response.Message)
+
+	response = performUserLimitsRequest(t, UpdateUserLimits, http.MethodPut, admin.Id, common.RoleAdminUser, `{"max_concurrency":1}`)
+	assert.False(t, response.Success)
+	snapshot, err := model.LoadUserLimitSnapshot(admin.Id)
+	require.NoError(t, err)
+	assert.Zero(t, snapshot.MaxConcurrency, "an operator of the same role cannot set limits")
+}
+
+func TestResetUserLimitWindowsEndsTheCurrentWindow(t *testing.T) {
+	_, user := setupUserLimitsTest(t)
+	require.NoError(t, model.SaveUserLimitPolicy(user.Id, 0, []model.UserUsageRule{{WindowSeconds: 18000, QuotaLimit: 500, Enabled: true}}))
+	model.RecordUserUsageWindows(user.Id, 500)
+	response := performUserLimitsRequest(t, GetUserLimits, http.MethodGet, user.Id, common.RoleRootUser, "")
+	require.True(t, response.Success, response.Message)
+	require.Len(t, response.Data.UsageRules, 1)
+	assert.Equal(t, service.UserUsageWindowExhausted, response.Data.UsageRules[0].Status)
+
+	response = performUserLimitsRequest(t, ResetUserLimitWindows, http.MethodPost, user.Id, common.RoleRootUser, `{}`)
+
+	require.True(t, response.Success, response.Message)
+	assert.Equal(t, service.UserUsageWindowIdle, response.Data.UsageRules[0].Status)
+	assert.Zero(t, response.Data.UsageRules[0].UsedQuota)
+	var audits []model.AuditLog
+	require.NoError(t, model.LOG_DB.Where("action = ?", "user.limits_reset").Find(&audits).Error)
+	assert.Len(t, audits, 1)
+}
+
+func TestGetSelfLimitsShowsOnlyEnabledRules(t *testing.T) {
+	_, user := setupUserLimitsTest(t)
+	require.NoError(t, model.SaveUserLimitPolicy(user.Id, 2, []model.UserUsageRule{
+		{WindowSeconds: 18000, QuotaLimit: 500, Enabled: true},
+		{WindowSeconds: 604800, QuotaLimit: 2000, Enabled: false},
+	}))
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/user/self/limits", nil)
+	c.Set("id", user.Id)
+
+	GetSelfLimits(c)
+
+	var response userLimitsTestResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, response.Message)
+	assert.Equal(t, 2, response.Data.MaxConcurrency)
+	require.Len(t, response.Data.UsageRules, 1)
+	assert.Equal(t, int64(18000), response.Data.UsageRules[0].WindowSeconds)
+}

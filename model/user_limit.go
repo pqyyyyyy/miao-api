@@ -115,21 +115,32 @@ func GetUserLimitSnapshot(userId int) (UserLimitSnapshot, error) {
 	if snapshot, found, err := cache.Get(userId); err == nil && found {
 		return snapshot, nil
 	}
+	snapshot, err := LoadUserLimitSnapshot(userId)
+	if err != nil {
+		return UserLimitSnapshot{}, err
+	}
+	cache.Set(userId, snapshot)
+	return snapshot, nil
+}
+
+// LoadUserLimitSnapshot reads the policy of a user from the database,
+// bypassing the cache that other instances may still hold for a short while.
+func LoadUserLimitSnapshot(userId int) (UserLimitSnapshot, error) {
 	var policy UserLimitPolicy
 	if err := DB.Where("user_id = ?", userId).Limit(1).Find(&policy).Error; err != nil {
 		return UserLimitSnapshot{}, err
 	}
 	snapshot := UserLimitSnapshot{}
-	if policy.Id != 0 {
-		snapshot.MaxConcurrency = policy.MaxConcurrency
-		snapshot.UpdatedAt = policy.UpdatedAt
-		if policy.UsageRules != "" {
-			if err := common.UnmarshalJsonStr(policy.UsageRules, &snapshot.Rules); err != nil {
-				return UserLimitSnapshot{}, err
-			}
+	if policy.Id == 0 {
+		return snapshot, nil
+	}
+	snapshot.MaxConcurrency = policy.MaxConcurrency
+	snapshot.UpdatedAt = policy.UpdatedAt
+	if policy.UsageRules != "" {
+		if err := common.UnmarshalJsonStr(policy.UsageRules, &snapshot.Rules); err != nil {
+			return UserLimitSnapshot{}, err
 		}
 	}
-	cache.Set(userId, snapshot)
 	return snapshot, nil
 }
 
