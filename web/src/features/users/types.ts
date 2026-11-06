@@ -145,6 +145,18 @@ export interface ManageUserQuotaPayload {
   value: number
 }
 
+/** One usage limit rule as the API saves it; quota is in quota units. */
+export interface UserUsageRulePayload {
+  window_seconds: number
+  quota_limit: number
+  enabled: boolean
+}
+
+export interface UpdateUserLimitsPayload {
+  max_concurrency: number
+  usage_rules: UserUsageRulePayload[]
+}
+
 // ============================================================================
 // Dialog Types
 // ============================================================================

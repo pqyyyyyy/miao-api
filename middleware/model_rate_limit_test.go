@@ -12,11 +12,14 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestModelRedisRateLimitUsesUTCRegardlessOfLocalTimezone(t *testing.T) {
@@ -194,6 +197,54 @@ func TestModelRateLimitCountsConfiguredGroupsSeparately(t *testing.T) {
 			for _, step := range steps {
 				assert.Equal(t, step.want, performRateLimitRequest(router, "/"+step.group, "127.0.0.1:1000").Code, "group %s", step.group)
 			}
+		})
+	}
+}
+
+func TestUserConcurrencyLimitRejectsRequestsBeyondTheConfiguredCap(t *testing.T) {
+	require.NoError(t, i18n.Init())
+	for _, backend := range []string{"memory", "redis"} {
+		t.Run(backend, func(t *testing.T) {
+			previousDB, previousRedis := model.DB, common.RedisEnabled
+			db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+			require.NoError(t, err)
+			require.NoError(t, db.AutoMigrate(&model.UserLimitPolicy{}, &model.UserUsageWindow{}))
+			model.DB = db
+			common.RedisEnabled = false
+			if backend == "redis" {
+				useRateLimitMiniRedis(t)
+			}
+			userID := 7300000 + int(modelRateLimitTestUsers.Add(1))
+			t.Cleanup(func() {
+				model.InvalidateUserLimitSnapshot(userID)
+				model.DB = previousDB
+				common.RedisEnabled = previousRedis
+			})
+			require.NoError(t, model.SaveUserLimitPolicy(userID, 1, nil))
+
+			entered, release := make(chan struct{}), make(chan struct{})
+			router := gin.New()
+			router.GET("/:mode", func(c *gin.Context) {
+				c.Set("id", userID)
+			}, UserConcurrencyLimit(), func(c *gin.Context) {
+				if c.Param("mode") == "hold" {
+					close(entered)
+					<-release
+				}
+				c.Status(http.StatusOK)
+			})
+
+			held := make(chan int, 1)
+			go func() { held <- performRateLimitRequest(router, "/hold", "127.0.0.1:1000").Code }()
+			<-entered
+			rejected := performRateLimitRequest(router, "/quick", "127.0.0.1:1000")
+			assert.Equal(t, http.StatusTooManyRequests, rejected.Code)
+			assert.Equal(t, "5", rejected.Header().Get("Retry-After"))
+			assert.Contains(t, rejected.Body.String(), `"code":"user_concurrency_limit_reached"`)
+
+			close(release)
+			assert.Equal(t, http.StatusOK, <-held)
+			assert.Equal(t, http.StatusOK, performRateLimitRequest(router, "/quick", "127.0.0.1:1000").Code, "the finished request frees its slot")
 		})
 	}
 }

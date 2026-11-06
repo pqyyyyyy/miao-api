@@ -3,6 +3,9 @@ package constant
 const (
 	MjErrorUnknown = 5
 	MjRequestError = 4
+	// MjUserLimitReached answers a submission blocked by the user's usage
+	// limit or concurrency limit; the relay responds with HTTP 429.
+	MjUserLimitReached = 429
 )
 
 const (

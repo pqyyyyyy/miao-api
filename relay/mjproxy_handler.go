@@ -226,6 +226,9 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 			Description: "quota_not_enough",
 		}
 	}
+	if apiErr := service.CheckUserUsageLimit(c, info.UserId, 0); apiErr != nil {
+		return service.MidjourneyErrorWrapper(constant.MjUserLimitReached, apiErr.Error())
+	}
 	requestURL := getMjRequestPath(c.Request.URL.String())
 	baseURL := c.GetString("base_url")
 	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
@@ -547,6 +550,11 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		return &dto.MidjourneyResponse{
 			Code:        4,
 			Description: "quota_not_enough",
+		}
+	}
+	if consumeQuota {
+		if apiErr := service.CheckUserUsageLimit(c, relayInfo.UserId, 0); apiErr != nil {
+			return service.MidjourneyErrorWrapper(constant.MjUserLimitReached, apiErr.Error())
 		}
 	}
 

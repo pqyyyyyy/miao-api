@@ -46,6 +46,8 @@ var auditRouteActions = map[string]string{
 	"POST /api/user/topup/complete":                    "user.topup_complete",
 	"DELETE /api/user/:id/reset_passkey":               "user.reset_passkey",
 	"DELETE /api/user/:id/oauth/bindings/:provider_id": "user.oauth_unbind",
+	"PUT /api/user/:id/limits":                         "user.limits_update",
+	"POST /api/user/:id/limits/reset":                  "user.limits_reset",
 
 	// 系统设置（root）
 	"POST /api/option/payment_compliance":       "option.payment_compliance",
