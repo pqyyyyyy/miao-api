@@ -190,16 +190,6 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"DELETE /api/system-info/stale-instances":      accessTokenScopeRule("ops:write"),
 	"DELETE /api/system-info/instances/:node_name": accessTokenScopeRule("ops:write"),
 
-	// router/api-router.go: /api/model_replacement
-	"GET /api/model_replacement/settings":             accessTokenScopeRule("option:read"),
-	"PUT /api/model_replacement/settings":             accessTokenScopeRule("option:write"),
-	"GET /api/model_replacement/candidates":           accessTokenScopeRule("option:read"),
-	"GET /api/model_replacement/overview":             accessTokenScopeRule("ops:read"),
-	"POST /api/model_replacement/run":                 accessTokenScopeRule("ops:write"),
-	"GET /api/model_replacement/channels":             accessTokenScopeRule("ops:read"),
-	"GET /api/model_replacement/history":              accessTokenScopeRule("ops:read"),
-	"GET /api/model_replacement/records/:id/attempts": accessTokenScopeRule("ops:read"),
-
 	// router/api-router.go: /api/plugin/task
 	"GET /api/plugin/task":                           accessTokenScopeRule("plugin:read"),
 	"POST /api/plugin/task":                          accessTokenScopeRule("plugin:write"),

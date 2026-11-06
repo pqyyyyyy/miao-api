@@ -58,9 +58,22 @@ export type AppliedAction = DetectionAction & {
   changed: boolean
 }
 
+/**
+ * Interval override for runs that finish between `start` (inclusive) and
+ * `end` (exclusive), HH:MM in server time. An end earlier than the start
+ * runs past midnight.
+ */
+export type IntervalWindow = {
+  start: string
+  end: string
+  interval_minutes: number
+}
+
 export type ModelReplacementSettings = {
   enabled: boolean
+  /** Default interval, used outside every window. */
   interval_minutes: number
+  interval_windows: IntervalWindow[]
   rounds: number
   concurrency: number
   timeout_seconds: number
@@ -146,9 +159,17 @@ export type DetectionRun = {
   result?: DetectionRunSummary | null
 }
 
+export type SettingsResponse = {
+  settings: ModelReplacementSettings
+  /** Time zone the interval windows are evaluated in, e.g. "UTC+08:00 (CST)". */
+  server_time_zone: string
+}
+
 export type DetectionOverview = {
   enabled: boolean
   interval_minutes: number
+  /** Interval that applies after the latest run, from its finish time. */
+  next_interval_minutes: number
   rounds: number
   models: string[]
   last_run: DetectionRun | null

@@ -51,8 +51,13 @@ func newModelReplacementChannel(channel *model.Channel) modelReplacementChannel 
 	}
 }
 
+// GetModelReplacementSettings returns the settings and the server time zone
+// that interval windows are evaluated in.
 func GetModelReplacementSettings(c *gin.Context) {
-	common.ApiSuccess(c, operation_setting.GetModelReplacementSetting())
+	common.ApiSuccess(c, gin.H{
+		"settings":         operation_setting.GetModelReplacementSetting(),
+		"server_time_zone": operation_setting.ServerTimeZone(),
+	})
 }
 
 func UpdateModelReplacementSettings(c *gin.Context) {
@@ -153,14 +158,22 @@ func GetModelReplacementOverview(c *gin.Context) {
 	for _, item := range setting.Models {
 		modelNames = append(modelNames, item.Model)
 	}
+	// The wait after the latest run follows the window that run finished in;
+	// before the first run it follows the current time.
+	waitFrom := time.Now()
+	if latestTask != nil {
+		waitFrom = time.Unix(latestTask.UpdatedAt, 0)
+	}
+	nextInterval := setting.IntervalAt(waitFrom)
 	data := gin.H{
-		"enabled":          setting.Enabled,
-		"interval_minutes": setting.IntervalMinutes,
-		"rounds":           setting.Rounds,
-		"models":           modelNames,
-		"last_run":         nil,
-		"active_run":       nil,
-		"next_run_at":      nil,
+		"enabled":               setting.Enabled,
+		"interval_minutes":      setting.IntervalMinutes,
+		"next_interval_minutes": int(nextInterval / time.Minute),
+		"rounds":                setting.Rounds,
+		"models":                modelNames,
+		"last_run":              nil,
+		"active_run":            nil,
+		"next_run_at":           nil,
 	}
 	if len(finishedTasks) > 0 {
 		data["last_run"] = finishedTasks[0].ToResponse()
@@ -171,7 +184,7 @@ func GetModelReplacementOverview(c *gin.Context) {
 	if setting.Enabled && activeTask == nil {
 		nextRunAt := common.GetTimestamp()
 		if latestTask != nil {
-			nextRunAt = max(nextRunAt, latestTask.UpdatedAt+int64(time.Duration(setting.IntervalMinutes)*time.Minute/time.Second))
+			nextRunAt = max(nextRunAt, latestTask.UpdatedAt+int64(nextInterval/time.Second))
 		}
 		data["next_run_at"] = nextRunAt
 	}

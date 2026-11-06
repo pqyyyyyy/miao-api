@@ -67,7 +67,9 @@ export function OverviewCards(props: OverviewCardsProps) {
 
   let runDisabledReason = ''
   if (!props.overview.enabled) {
-    runDisabledReason = t('Turn on detection in settings first.')
+    runDisabledReason = t(
+      'Turn on detection in Detection settings at the top right first.'
+    )
   } else if (activeRun) {
     runDisabledReason = t('A detection run is already in progress.')
   }
@@ -183,7 +185,7 @@ export function OverviewCards(props: OverviewCardsProps) {
                         'seconds',
                         locale
                       ),
-                      minutes: props.overview.interval_minutes,
+                      minutes: props.overview.next_interval_minutes,
                     })
                   : t('Scheduled detection is not running.')}
               </p>

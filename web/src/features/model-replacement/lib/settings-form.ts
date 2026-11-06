@@ -20,6 +20,7 @@ import * as z from 'zod'
 
 import type {
   DetectedModelSetting,
+  IntervalWindow,
   MatchMode,
   ModelReplacementSettings,
 } from '../types'
@@ -49,6 +50,7 @@ export const DEFAULT_MODEL_REPLACEMENT_SETTINGS: ModelReplacementSettings = {
   concurrency: 3,
   timeout_seconds: 60,
   threshold: 0,
+  interval_windows: [],
   pass_actions: [],
   fail_actions: [],
   models: [],
@@ -80,6 +82,50 @@ export function setChannelIncluded(
   const rest = excludedChannelIds.filter((id) => id !== channelId)
   if (included) return rest
   return [...rest, channelId].sort((a, b) => a - b)
+}
+
+export const MAX_INTERVAL_WINDOWS = 24
+const CLOCK_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
+const MINUTES_PER_DAY = 24 * 60
+
+function clockMinutes(value: string): number {
+  const [hours, minutes] = value.split(':').map(Number)
+  return hours * 60 + minutes
+}
+
+/**
+ * Returns the indexes of the first two windows that overlap, or null. A
+ * window whose end is earlier than its start runs past midnight. Mirrors the
+ * server check in model_replacement_setting.go.
+ */
+export function findOverlappingWindows(
+  windows: IntervalWindow[]
+): [number, number] | null {
+  const segments: { window: number; start: number; end: number }[] = []
+  windows.forEach((window, index) => {
+    if (!CLOCK_PATTERN.test(window.start) || !CLOCK_PATTERN.test(window.end)) {
+      return
+    }
+    const start = clockMinutes(window.start)
+    const end = clockMinutes(window.end)
+    if (start === end) return
+    if (start < end) {
+      segments.push({ window: index, start, end })
+      return
+    }
+    segments.push({ window: index, start, end: MINUTES_PER_DAY })
+    if (end > 0) segments.push({ window: index, start: 0, end })
+  })
+  for (let i = 0; i < segments.length; i++) {
+    for (let j = i + 1; j < segments.length; j++) {
+      const a = segments[i]
+      const b = segments[j]
+      if (a.window !== b.window && a.start < b.end && b.start < a.end) {
+        return [a.window, b.window]
+      }
+    }
+  }
+  return null
 }
 
 function isValidRegex(pattern: string): boolean {
@@ -179,11 +225,55 @@ export function createModelReplacementSettingsSchema(t: Translate) {
         .number()
         .min(0, t('Enter a number between 0 and 100'))
         .max(100, t('Enter a number between 0 and 100')),
+      interval_windows: z
+        .array(
+          z.object({
+            start: z.string().regex(CLOCK_PATTERN, t('Enter a time as HH:MM')),
+            end: z.string().regex(CLOCK_PATTERN, t('Enter a time as HH:MM')),
+            interval_minutes: integerInRange(
+              1,
+              SETTING_LIMITS.intervalMinutesMax,
+              t('Enter an integer between {{min}} and {{max}}', {
+                min: 1,
+                max: SETTING_LIMITS.intervalMinutesMax,
+              })
+            ),
+          })
+        )
+        .max(
+          MAX_INTERVAL_WINDOWS,
+          t('At most {{max}} time windows can be configured', {
+            max: MAX_INTERVAL_WINDOWS,
+          })
+        ),
       pass_actions: actionListSchema,
       fail_actions: actionListSchema,
       models: z.array(detectedModelSchema),
     })
     .superRefine((values, ctx) => {
+      values.interval_windows.forEach((window, index) => {
+        if (window.start === window.end) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['interval_windows', index, 'end'],
+            message: t('A time window must not start and end at the same time'),
+          })
+        }
+      })
+      const overlap = findOverlappingWindows(values.interval_windows)
+      if (overlap) {
+        const [first, second] = overlap.map(
+          (index) => values.interval_windows[index]
+        )
+        ctx.addIssue({
+          code: 'custom',
+          path: ['interval_windows'],
+          message: t('Time windows {{first}} and {{second}} overlap', {
+            first: `${first.start}-${first.end}`,
+            second: `${second.start}-${second.end}`,
+          }),
+        })
+      }
       for (const key of ['pass_actions', 'fail_actions'] as const) {
         const invalid = values[key].findIndex((action) =>
           validateAction(action)

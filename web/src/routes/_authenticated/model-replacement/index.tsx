@@ -19,14 +19,24 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { ModelReplacement } from '@/features/model-replacement'
-import { ROLE } from '@/lib/roles'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+  hasPermission,
+} from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
 export const Route = createFileRoute('/_authenticated/model-replacement/')({
   beforeLoad: () => {
     const { auth } = useAuthStore.getState()
 
-    if (auth.user?.role !== ROLE.SUPER_ADMIN) {
+    if (
+      !hasPermission(
+        auth.user,
+        ADMIN_PERMISSION_RESOURCES.CHANNEL,
+        ADMIN_PERMISSION_ACTIONS.MODEL_REPLACEMENT
+      )
+    ) {
       throw redirect({
         to: '/403',
       })

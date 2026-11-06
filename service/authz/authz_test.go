@@ -148,11 +148,12 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 	assert.False(t, Can(42, common.RoleAdminUser, ChannelWrite))
 	assert.Equal(t, PermissionsMap{
 		ResourceChannel: {
-			ActionRead:           true,
-			ActionOperate:        true,
-			ActionWrite:          false,
-			ActionSensitiveWrite: true,
-			ActionSecretView:     false,
+			ActionRead:             true,
+			ActionOperate:          true,
+			ActionWrite:            false,
+			ActionSensitiveWrite:   true,
+			ActionSecretView:       false,
+			ActionModelReplacement: false,
 		},
 		ResourceTaskPlugin: {
 			ActionBind: false,
@@ -180,11 +181,12 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 	assert.False(t, Can(42, common.RoleAdminUser, ChannelSensitiveWrite))
 	assert.Equal(t, PermissionsMap{
 		ResourceChannel: {
-			ActionRead:           true,
-			ActionOperate:        true,
-			ActionWrite:          true,
-			ActionSensitiveWrite: false,
-			ActionSecretView:     false,
+			ActionRead:             true,
+			ActionOperate:          true,
+			ActionWrite:            true,
+			ActionSensitiveWrite:   false,
+			ActionSecretView:       false,
+			ActionModelReplacement: false,
 		},
 		ResourceTaskPlugin: {
 			ActionBind: false,
@@ -192,6 +194,19 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 		ResourceAudit: {ActionRead: false},
 	}, ExplicitUserPermissions(42))
 	assert.Empty(t, ExplicitUserOverrides(42))
+}
+
+func TestModelReplacementPermissionIsGrantedOnlyExplicitly(t *testing.T) {
+	db := newAuthzTestDB(t)
+	require.NoError(t, Init(db))
+
+	assert.False(t, Can(51, common.RoleAdminUser, ChannelModelReplacement), "admins do not get it by default")
+	assert.True(t, Can(51, common.RoleRootUser, ChannelModelReplacement))
+
+	require.NoError(t, SetUserPermissions(51, PermissionsMap{ResourceChannel: {ActionModelReplacement: true}}))
+	assert.True(t, Can(51, common.RoleAdminUser, ChannelModelReplacement))
+	assert.False(t, Can(51, common.RoleCommonUser, ChannelModelReplacement), "a grant does not apply below the admin role")
+	assert.False(t, Can(52, common.RoleAdminUser, ChannelModelReplacement), "the grant belongs to one administrator")
 }
 
 func TestClearUserAuthorizationRemovesOverrides(t *testing.T) {

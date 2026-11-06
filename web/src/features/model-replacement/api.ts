@@ -27,6 +27,7 @@ import type {
   ModelCandidate,
   ModelReplacementSettings,
   RecordAttempts,
+  SettingsResponse,
 } from './types'
 
 const BASE_PATH = '/api/model_replacement'
@@ -50,7 +51,7 @@ export const modelReplacementQueryKeys = {
 }
 
 export async function getModelReplacementSettings() {
-  const res = await api.get<ApiResponse<ModelReplacementSettings>>(
+  const res = await api.get<ApiResponse<SettingsResponse>>(
     `${BASE_PATH}/settings`
   )
   return res.data

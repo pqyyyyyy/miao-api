@@ -10,14 +10,18 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,6 +43,39 @@ func setupModelReplacementTestDB(t *testing.T) *gorm.DB {
 	})
 	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}, &model.User{}, &model.Log{}, &model.ModelReplacementRecord{}, &model.ModelReplacementAttempt{}))
 	return db
+}
+
+func TestModelReplacementEndpointsRequireThePermission(t *testing.T) {
+	db := setupModelReplacementTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.SystemTask{}, &model.CasbinRule{}, &model.AuthzRole{}))
+	previousMaster := common.IsMasterNode
+	common.IsMasterNode = true
+	t.Cleanup(func() { common.IsMasterNode = previousMaster })
+	require.NoError(t, authz.Init(db))
+	require.NoError(t, authz.SetUserPermissions(3, authz.PermissionsMap{authz.ResourceChannel: {authz.ActionModelReplacement: true}}))
+
+	for _, tc := range []struct {
+		name       string
+		id, role   int
+		wantStatus int
+	}{
+		{"admin without the permission", 2, common.RoleAdminUser, http.StatusForbidden},
+		{"admin granted the permission", 3, common.RoleAdminUser, http.StatusOK},
+		{"root", 1, common.RoleRootUser, http.StatusOK},
+	} {
+		for _, handler := range []gin.HandlerFunc{GetModelReplacementOverview, GetModelReplacementSettings} {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/model_replacement/overview", nil)
+			c.Set("id", tc.id)
+			c.Set("role", tc.role)
+			middleware.RequirePermission(authz.ChannelModelReplacement)(c)
+			if !c.IsAborted() {
+				handler(c)
+			}
+			assert.Equal(t, tc.wantStatus, recorder.Code, tc.name)
+		}
+	}
 }
 
 func TestParseModelReplacementSetting(t *testing.T) {
@@ -85,6 +122,46 @@ func TestParseModelReplacementSetting(t *testing.T) {
 		_, err := operation_setting.ParseModelReplacementSetting(value)
 		assert.Error(t, err, name)
 	}
+}
+
+func TestModelReplacementIntervalWindows(t *testing.T) {
+	setting, err := operation_setting.ParseModelReplacementSetting(`{"interval_minutes":10,"interval_windows":[{"start":"07:00","end":"00:00","interval_minutes":30},{"start":"00:00","end":"07:00","interval_minutes":60}]}`)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"00:00", "07:00"}, []string{setting.IntervalWindows[0].Start, setting.IntervalWindows[1].Start}, "windows are kept in start order")
+
+	at := func(hour, minute int) time.Time { return time.Date(2026, 11, 6, hour, minute, 0, 0, time.Local) }
+	for _, tc := range []struct {
+		hour, minute int
+		want         time.Duration
+	}{
+		{0, 0, time.Hour},
+		{3, 30, time.Hour},
+		{6, 59, time.Hour},
+		{7, 0, 30 * time.Minute},
+		{23, 59, 30 * time.Minute},
+	} {
+		assert.Equal(t, tc.want, setting.IntervalAt(at(tc.hour, tc.minute)), "%02d:%02d", tc.hour, tc.minute)
+	}
+
+	night, err := operation_setting.ParseModelReplacementSetting(`{"interval_minutes":10,"interval_windows":[{"start":"22:00","end":"02:00","interval_minutes":90}]}`)
+	require.NoError(t, err)
+	assert.Equal(t, 90*time.Minute, night.IntervalAt(at(23, 0)), "a window ending earlier than it starts runs past midnight")
+	assert.Equal(t, 90*time.Minute, night.IntervalAt(at(1, 59)))
+	assert.Equal(t, 10*time.Minute, night.IntervalAt(at(2, 0)), "the end time is outside the window")
+	assert.Equal(t, 10*time.Minute, night.IntervalAt(at(12, 0)), "outside every window the default applies")
+
+	for name, value := range map[string]string{
+		"overlap":                 `{"interval_windows":[{"start":"00:00","end":"08:00","interval_minutes":60},{"start":"07:00","end":"12:00","interval_minutes":30}]}`,
+		"overlap across midnight": `{"interval_windows":[{"start":"22:00","end":"02:00","interval_minutes":60},{"start":"01:00","end":"03:00","interval_minutes":30}]}`,
+		"same start and end":      `{"interval_windows":[{"start":"08:00","end":"08:00","interval_minutes":60}]}`,
+		"bad time":                `{"interval_windows":[{"start":"24:00","end":"07:00","interval_minutes":60}]}`,
+		"interval out of range":   `{"interval_windows":[{"start":"00:00","end":"07:00","interval_minutes":0}]}`,
+	} {
+		_, err := operation_setting.ParseModelReplacementSetting(value)
+		assert.Error(t, err, name)
+	}
+	_, err = operation_setting.ParseModelReplacementSetting(`{"interval_windows":[{"start":"00:00","end":"07:00","interval_minutes":60},{"start":"07:00","end":"00:00","interval_minutes":30}]}`)
+	assert.NoError(t, err, "adjacent windows do not overlap")
 }
 
 func TestModelReplacementAnswerMatches(t *testing.T) {

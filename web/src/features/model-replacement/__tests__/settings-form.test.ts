@@ -22,6 +22,7 @@ import {
   DEFAULT_MODEL_REPLACEMENT_SETTINGS,
   createDetectedModel,
   createModelReplacementSettingsSchema,
+  findOverlappingWindows,
   setChannelIncluded,
 } from '../lib/settings-form'
 import type { ModelReplacementSettings } from '../types'
@@ -87,5 +88,62 @@ describe('model replacement settings schema', () => {
         models: [createDetectedModel('gpt-4o')],
       })
     ).toEqual(['models.0.question', 'models.0.expected_answer'])
+  })
+})
+
+describe('interval windows', () => {
+  const window = (start: string, end: string, interval_minutes = 30) => ({
+    start,
+    end,
+    interval_minutes,
+  })
+
+  it('accepts adjacent windows that cover the whole day', () => {
+    expect(
+      findOverlappingWindows([
+        window('00:00', '07:00', 60),
+        window('07:00', '00:00'),
+      ])
+    ).toBeNull()
+  })
+
+  it('finds windows that overlap, including one that runs past midnight', () => {
+    expect(
+      findOverlappingWindows([
+        window('00:00', '08:00'),
+        window('07:00', '12:00'),
+      ])
+    ).toEqual([0, 1])
+    expect(
+      findOverlappingWindows([
+        window('12:00', '13:00'),
+        window('22:00', '02:00'),
+        window('01:00', '03:00'),
+      ])
+    ).toEqual([1, 2])
+  })
+
+  it('reports an overlap on the window list and a zero-length window on its end time', () => {
+    expect(
+      issuePaths({
+        ...DEFAULT_MODEL_REPLACEMENT_SETTINGS,
+        interval_windows: [window('00:00', '08:00'), window('07:00', '12:00')],
+      })
+    ).toEqual(['interval_windows'])
+    expect(
+      issuePaths({
+        ...DEFAULT_MODEL_REPLACEMENT_SETTINGS,
+        interval_windows: [window('08:00', '08:00')],
+      })
+    ).toEqual(['interval_windows.0.end'])
+  })
+
+  it('rejects a time that is not HH:MM', () => {
+    expect(
+      issuePaths({
+        ...DEFAULT_MODEL_REPLACEMENT_SETTINGS,
+        interval_windows: [window('7:00', '08:00')],
+      })
+    ).toEqual(['interval_windows.0.start'])
   })
 })

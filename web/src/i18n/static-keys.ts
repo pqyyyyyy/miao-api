@@ -906,6 +906,9 @@ export const STATIC_I18N_KEYS = [
   'Channel priorities changed. Refresh and try again.',
   'Invalid channel priority move',
   'Channel priority is outside the sortable range',
+  // Model replacement detection permission (served by the authz catalog).
+  'Maintain model replacement detection',
+  'View detection reports, change detection settings and automatic actions, and start runs. Automatic actions can change channel groups, priority, weight, tags, and status.',
   // Model replacement detection API errors and channel status reason.
   'Invalid model replacement detection settings',
   'Detection interval must be between 1 and {{max}} minutes',
@@ -920,6 +923,10 @@ export const STATIC_I18N_KEYS = [
   'Amounts must be between 1 and {{max}}',
   'Priority must be between {{min}} and {{max}}',
   'Weight must be between 0 and {{max}}',
+  'At most {{max}} time windows can be configured',
+  'Time windows must use 24-hour HH:MM times',
+  'A time window must not start and end at the same time',
+  'Time windows {{first}} and {{second}} overlap',
   'At most {{max}} models can be detected',
   'Model {{model}} is configured more than once',
   'Enter the test question and expected answer for {{model}}',
@@ -934,8 +941,8 @@ export const STATIC_I18N_KEYS = [
   'Model replacement detection found a replaced model',
   'Disabled by a model replacement detection action',
   // Model replacement detection labels rendered from constants.
-  'Detection interval (minutes)',
-  'Waiting starts after every round of the previous run has finished.',
+  'Default detection interval (minutes)',
+  'Used when a run finishes outside every time window below. Waiting starts after every round of the previous run has finished.',
   'Test rounds',
   'Each round tests every matching channel once; the next round starts after all channels finish.',
   'Maximum concurrency',
