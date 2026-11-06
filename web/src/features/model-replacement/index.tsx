@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { HeartPulse, LineChart, ListChecks } from 'lucide-react'
+import { HeartPulse, LineChart, ListChecks, Settings2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -26,6 +26,7 @@ import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
 import { LoadingState } from '@/components/loading-state'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -48,6 +49,7 @@ import { ChannelReportPanel } from './components/report/channel-report-panel'
 import { ChannelSummaryTable } from './components/report/channel-summary-table'
 import { HealthChannelTabs } from './components/report/health-channel-tabs'
 import { OverviewCards } from './components/report/overview-cards'
+import { ModelReplacementSettingsDrawer } from './components/settings/model-replacement-settings-drawer'
 import { splitByLatestVerdict } from './lib/report'
 
 const ACTIVE_POLL_INTERVAL_MS = 5000
@@ -60,6 +62,7 @@ export function ModelReplacement() {
   const [model, setModel] = useState<string | null>(null)
   const [channelId, setChannelId] = useState<number | null>(null)
   const [recordId, setRecordId] = useState<number | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const reportRef = useRef<HTMLDivElement>(null)
 
   const overviewQuery = useQuery({
@@ -239,6 +242,22 @@ export function ModelReplacement() {
           )}
         </span>
       </SectionPageLayout.Title>
+      <SectionPageLayout.Actions>
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          onClick={() => setSettingsOpen(true)}
+        >
+          <Settings2 data-icon='inline-start' aria-hidden='true' />
+          {t('Detection settings')}
+        </Button>
+        {/* The layout renders only its slots; the drawer portals out. */}
+        <ModelReplacementSettingsDrawer
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+        />
+      </SectionPageLayout.Actions>
       <SectionPageLayout.Content>{content}</SectionPageLayout.Content>
     </SectionPageLayout>
   )

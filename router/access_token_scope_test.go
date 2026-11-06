@@ -132,6 +132,10 @@ func TestAccessTokenRouteRulesCoverEveryDashboardRoute(t *testing.T) {
 	for _, route := range channelPermissionRoutes {
 		permissionRoutes[route.method+" "+joinPaths("/api/channel", route.path)] = route.permission
 	}
+	for _, route := range modelReplacementPermissionRoutes {
+		require.Equal(t, authz.ChannelModelReplacement, route.permission, route.path)
+		permissionRoutes[route.method+" "+joinPaths("/api/model_replacement", route.path)] = route.permission
+	}
 	for key, permission := range accessTokenHelperRoutes {
 		permissionRoutes[key] = permission
 	}

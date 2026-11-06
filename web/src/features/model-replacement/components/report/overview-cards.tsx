@@ -67,7 +67,9 @@ export function OverviewCards(props: OverviewCardsProps) {
 
   let runDisabledReason = ''
   if (!props.overview.enabled) {
-    runDisabledReason = t('Turn on detection in settings first.')
+    runDisabledReason = t(
+      'Turn on detection in Detection settings at the top right first.'
+    )
   } else if (activeRun) {
     runDisabledReason = t('A detection run is already in progress.')
   }

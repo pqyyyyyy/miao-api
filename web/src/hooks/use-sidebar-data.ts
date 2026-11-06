@@ -41,6 +41,10 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import type { SidebarBadges, SidebarData } from '@/components/layout/types'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+} from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
 
 /**
@@ -162,7 +166,10 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
             title: t('Model replacement detection'),
             url: '/model-replacement',
             icon: ScanSearch,
-            requiredRole: ROLE.SUPER_ADMIN,
+            requiredPermission: {
+              resource: ADMIN_PERMISSION_RESOURCES.CHANNEL,
+              action: ADMIN_PERMISSION_ACTIONS.MODEL_REPLACEMENT,
+            },
           },
           {
             title: t('System Info'),

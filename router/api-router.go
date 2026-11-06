@@ -340,17 +340,12 @@ func SetApiRouter(router *gin.Engine) {
 			systemTaskRoute.GET("/current", controller.GetCurrentSystemTask)
 			systemTaskRoute.GET("/:task_id", controller.GetSystemTask)
 		}
-		modelReplacementRoute := apiRouter.Group("/model_replacement")
-		modelReplacementRoute.Use(middleware.RootAuth())
-		{
-			modelReplacementRoute.GET("/settings", controller.GetModelReplacementSettings)
-			modelReplacementRoute.PUT("/settings", controller.UpdateModelReplacementSettings)
-			modelReplacementRoute.GET("/candidates", controller.GetModelReplacementCandidates)
-			modelReplacementRoute.GET("/overview", controller.GetModelReplacementOverview)
-			modelReplacementRoute.POST("/run", controller.RunModelReplacementDetection)
-			modelReplacementRoute.GET("/channels", controller.GetModelReplacementChannels)
-			modelReplacementRoute.GET("/history", controller.GetModelReplacementHistory)
-			modelReplacementRoute.GET("/records/:id/attempts", controller.GetModelReplacementRecordAttempts)
+		// Model replacement detection: the report, its settings, and manual
+		// runs share one channel permission, so an administrator granted it
+		// can maintain detection without access to system settings.
+		modelReplacementRoute := apiRouter.Group("/model_replacement", middleware.AdminAuth())
+		for _, route := range modelReplacementPermissionRoutes {
+			handlePermissionRoute(modelReplacementRoute, route.method, route.path, route.permission, route.handler)
 		}
 		systemInfoRoute := apiRouter.Group("/system-info")
 		systemInfoRoute.Use(middleware.RootAuth())

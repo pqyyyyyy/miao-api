@@ -906,6 +906,9 @@ export const STATIC_I18N_KEYS = [
   'Channel priorities changed. Refresh and try again.',
   'Invalid channel priority move',
   'Channel priority is outside the sortable range',
+  // Model replacement detection permission (served by the authz catalog).
+  'Maintain model replacement detection',
+  'View detection reports, change detection settings and automatic actions, and start runs. Automatic actions can change channel groups, priority, weight, tags, and status.',
   // Model replacement detection API errors and channel status reason.
   'Invalid model replacement detection settings',
   'Detection interval must be between 1 and {{max}} minutes',

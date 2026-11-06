@@ -54,6 +54,19 @@ func registerChannelRoutes(apiRouter *gin.RouterGroup) {
 	}
 }
 
+// modelReplacementPermissionRoutes are mounted under /api/model_replacement.
+// The report, its settings, and manual runs share one channel permission.
+var modelReplacementPermissionRoutes = []permissionRoute{
+	{method: http.MethodGet, path: "/settings", permission: authz.ChannelModelReplacement, handler: controller.GetModelReplacementSettings},
+	{method: http.MethodPut, path: "/settings", permission: authz.ChannelModelReplacement, handler: controller.UpdateModelReplacementSettings},
+	{method: http.MethodGet, path: "/candidates", permission: authz.ChannelModelReplacement, handler: controller.GetModelReplacementCandidates},
+	{method: http.MethodGet, path: "/overview", permission: authz.ChannelModelReplacement, handler: controller.GetModelReplacementOverview},
+	{method: http.MethodPost, path: "/run", permission: authz.ChannelModelReplacement, handler: controller.RunModelReplacementDetection},
+	{method: http.MethodGet, path: "/channels", permission: authz.ChannelModelReplacement, handler: controller.GetModelReplacementChannels},
+	{method: http.MethodGet, path: "/history", permission: authz.ChannelModelReplacement, handler: controller.GetModelReplacementHistory},
+	{method: http.MethodGet, path: "/records/:id/attempts", permission: authz.ChannelModelReplacement, handler: controller.GetModelReplacementRecordAttempts},
+}
+
 var channelPermissionRoutes = []permissionRoute{
 	{method: http.MethodGet, path: "/priority/order", permission: authz.ChannelRead, handler: controller.GetChannelPriorityOrder},
 	{method: http.MethodPost, path: "/priority/reorder", permission: authz.ChannelWrite, handler: controller.ReorderChannelPriority},

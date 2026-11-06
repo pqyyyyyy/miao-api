@@ -19,8 +19,19 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
+import {
+  sideDrawerContentClassName,
+  sideDrawerHeaderClassName,
+} from '@/components/drawer-layout'
 import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import { getGroups } from '@/features/users/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
 
@@ -32,11 +43,19 @@ import {
 import { DEFAULT_MODEL_REPLACEMENT_SETTINGS } from '../../lib/settings-form'
 import { ModelReplacementSettingsForm } from './model-replacement-settings-form'
 
+type ModelReplacementSettingsDrawerProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
 /**
- * Settings page section for model replacement detection. It only edits the
- * configuration; reports live on the console page.
+ * Drawer on the report page that edits the detection settings, so an
+ * administrator granted the detection permission can maintain it without
+ * access to system settings.
  */
-export function ModelReplacementSettingsSection() {
+export function ModelReplacementSettingsDrawer(
+  props: ModelReplacementSettingsDrawerProps
+) {
   const { t } = useTranslation()
   const settingsQuery = useQuery({
     queryKey: modelReplacementQueryKeys.settings(),
@@ -45,22 +64,23 @@ export function ModelReplacementSettingsSection() {
         settings: DEFAULT_MODEL_REPLACEMENT_SETTINGS,
         server_time_zone: '',
       },
+    enabled: props.open,
   })
   const candidatesQuery = useQuery({
     queryKey: modelReplacementQueryKeys.candidates(),
     queryFn: async () =>
       requireServerSuccess(await getModelReplacementCandidates()).data ?? [],
+    enabled: props.open,
   })
   const groupsQuery = useQuery({
     queryKey: [...modelReplacementQueryKeys.all, 'groups'],
     queryFn: async () => requireServerSuccess(await getGroups()).data ?? [],
+    enabled: props.open,
   })
 
-  if (settingsQuery.isLoading || candidatesQuery.isLoading) {
-    return <LoadingState />
-  }
-  if (!settingsQuery.data || !candidatesQuery.data) {
-    return (
+  let body = <LoadingState className='flex-1' />
+  if (settingsQuery.isError || candidatesQuery.isError) {
+    body = (
       <ErrorState
         title={t('Failed to load settings')}
         onRetry={() => {
@@ -69,14 +89,33 @@ export function ModelReplacementSettingsSection() {
         }}
       />
     )
+  } else if (settingsQuery.data && candidatesQuery.data) {
+    body = (
+      <ModelReplacementSettingsForm
+        settings={settingsQuery.data.settings}
+        serverTimeZone={settingsQuery.data.server_time_zone}
+        candidates={candidatesQuery.data}
+        groups={groupsQuery.data ?? []}
+        onSaved={() => props.onOpenChange(false)}
+      />
+    )
   }
 
   return (
-    <ModelReplacementSettingsForm
-      settings={settingsQuery.data.settings}
-      serverTimeZone={settingsQuery.data.server_time_zone}
-      candidates={candidatesQuery.data}
-      groups={groupsQuery.data ?? []}
-    />
+    <Sheet open={props.open} onOpenChange={props.onOpenChange}>
+      <SheetContent
+        className={sideDrawerContentClassName('max-w-none sm:!max-w-[820px]')}
+      >
+        <SheetHeader className={sideDrawerHeaderClassName()}>
+          <SheetTitle>{t('Detection settings')}</SheetTitle>
+          <SheetDescription>
+            {t(
+              'Periodically asks each channel the configured questions and checks the answers to find channels that serve a different model.'
+            )}
+          </SheetDescription>
+        </SheetHeader>
+        {body}
+      </SheetContent>
+    </Sheet>
   )
 }

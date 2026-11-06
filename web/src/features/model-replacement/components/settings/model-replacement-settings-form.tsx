@@ -23,7 +23,12 @@ import { useFieldArray, useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import {
+  sideDrawerFooterClassName,
+  sideDrawerFormClassName,
+} from '@/components/drawer-layout'
 import { MultiSelect } from '@/components/multi-select'
+import { Button } from '@/components/ui/button'
 import {
   Form,
   FormControl,
@@ -35,15 +40,13 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { SheetClose, SheetFooter } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import {
-  SettingsForm,
   SettingsFormGrid,
   SettingsSwitchContent,
   SettingsSwitchItem,
 } from '@/features/system-settings/components/settings-form-layout'
-import { SettingsPageFormActions } from '@/features/system-settings/components/settings-page-context'
-import { SettingsSection } from '@/features/system-settings/components/settings-section'
 import { useResetForm } from '@/features/system-settings/hooks/use-reset-form'
 import { safeNumberFieldProps } from '@/features/system-settings/utils/numeric-field'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -125,6 +128,8 @@ type ModelReplacementSettingsFormProps = {
   serverTimeZone: string
   candidates: ModelCandidate[]
   groups: string[]
+  /** Called after the settings were saved. */
+  onSaved: () => void
 }
 
 export function ModelReplacementSettingsForm(
@@ -152,6 +157,7 @@ export function ModelReplacementSettingsForm(
       await queryClient.invalidateQueries({
         queryKey: modelReplacementQueryKeys.all,
       })
+      props.onSaved()
     },
     onError: (error) => handleServerError(error),
   })
@@ -185,19 +191,13 @@ export function ModelReplacementSettingsForm(
   }
 
   return (
-    <SettingsSection title={t('Model replacement detection')}>
-      <p className='text-muted-foreground text-sm'>
-        {t(
-          'Periodically asks each channel the configured questions and checks the answers to find channels that serve a different model. Reports are on the Model replacement detection console page.'
-        )}
-      </p>
-      <Form {...form}>
-        <SettingsForm onSubmit={onSave}>
-          <SettingsPageFormActions
-            onSave={onSave}
-            isSaving={saveMutation.isPending}
-          />
-
+    <Form {...form}>
+      <form
+        onSubmit={onSave}
+        noValidate
+        className='flex min-h-0 flex-1 flex-col'
+      >
+        <div className={sideDrawerFormClassName()}>
           <SettingsFormGrid>
             <FormField
               control={form.control}
@@ -340,8 +340,22 @@ export function ModelReplacementSettingsForm(
               </div>
             )}
           </div>
-        </SettingsForm>
-      </Form>
-    </SettingsSection>
+        </div>
+        <SheetFooter className={sideDrawerFooterClassName()}>
+          <SheetClose
+            render={<Button variant='outline' className='w-full sm:w-auto' />}
+          >
+            {t('Cancel')}
+          </SheetClose>
+          <Button
+            type='submit'
+            className='w-full sm:w-auto'
+            disabled={saveMutation.isPending}
+          >
+            {saveMutation.isPending ? t('Saving...') : t('Save changes')}
+          </Button>
+        </SheetFooter>
+      </form>
+    </Form>
   )
 }
