@@ -969,17 +969,14 @@ export const STATIC_I18N_KEYS = [
   'Set to disabled',
   'Set tag',
   'Remove tag (if present)',
-<<<<<<< HEAD
   'Each run',
   '1 hour',
   '6 hours',
   '12 hours',
   '1 day',
   '3 days',
-=======
   // Usage limit window states (components/usage-rule-progress.tsx).
   'Not started',
   'In progress',
   'Exhausted',
->>>>>>> pr-1-rate-limit
 ] as const
